@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Button, Tooltip, Empty, App } from 'antd';
 import {
   DownOutlined,
@@ -16,7 +16,9 @@ import {
   clearEmitLogs,
   addPinnedMessage,
   listPinnedMessages,
+  findDuplicatePinnedMessage,
 } from '@/app/hooks/useTauri';
+import PinNameModal from './PinNameModal';
 
 function formatTime(dateStr: string): string {
   const date = new Date(dateStr);
@@ -43,6 +45,10 @@ export default function EmitLogPanel() {
   const openSendModal = useSocketStore((state) => state.openSendModal);
 
   const currentConnection = useCurrentConnection();
+
+  // Pin name modal state
+  const [pinModalOpen, setPinModalOpen] = useState(false);
+  const [pendingPin, setPendingPin] = useState<{ eventName: string; payload: string } | null>(null);
 
   // Load emit logs when connection changes
   useEffect(() => {
@@ -87,12 +93,36 @@ export default function EmitLogPanel() {
   async function handlePin(eventName: string, payload: string) {
     if (!currentConnection) return;
 
+    // Check for duplicates
+    try {
+      const duplicateId = await findDuplicatePinnedMessage(
+        currentConnection.id,
+        eventName,
+        payload
+      );
+
+      if (duplicateId) {
+        message.warning('This message is already pinned');
+        return;
+      }
+
+      // Open modal for custom name
+      setPendingPin({ eventName, payload });
+      setPinModalOpen(true);
+    } catch {
+      message.error('Failed to check duplicate');
+    }
+  }
+
+  async function handlePinConfirm(customName: string) {
+    if (!currentConnection || !pendingPin) return;
+
     try {
       await addPinnedMessage({
         connectionId: currentConnection.id,
-        eventName,
-        payload,
-        label: eventName,
+        eventName: pendingPin.eventName,
+        payload: pendingPin.payload,
+        label: customName,
       });
 
       const pinnedList = await listPinnedMessages(currentConnection.id);
@@ -100,7 +130,15 @@ export default function EmitLogPanel() {
       message.success('Message pinned');
     } catch {
       message.error('Failed to pin');
+    } finally {
+      setPinModalOpen(false);
+      setPendingPin(null);
     }
+  }
+
+  function handlePinCancel() {
+    setPinModalOpen(false);
+    setPendingPin(null);
   }
 
   return (
@@ -173,6 +211,14 @@ export default function EmitLogPanel() {
           )}
         </div>
       )}
+
+      {/* Pin Name Modal */}
+      <PinNameModal
+        open={pinModalOpen}
+        onOk={handlePinConfirm}
+        onCancel={handlePinCancel}
+        defaultName={pendingPin?.eventName || ''}
+      />
     </div>
   );
 }

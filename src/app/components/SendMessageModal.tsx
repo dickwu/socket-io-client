@@ -22,7 +22,9 @@ import {
   listPinnedMessages,
   deletePinnedMessage,
   clearEmitLogs,
+  findDuplicatePinnedMessage,
 } from '@/app/hooks/useTauri';
+import PinNameModal from './PinNameModal';
 
 // Configure Monaco to load from CDN
 loader.config({
@@ -68,6 +70,10 @@ export default function SendMessageModal({
   const [sending, setSending] = useState(false);
   const [jsonError, setJsonError] = useState<string | null>(null);
   const [theme, setTheme] = useState<'vs-dark' | 'light'>('vs-dark');
+
+  // Pin name modal state
+  const [pinModalOpen, setPinModalOpen] = useState(false);
+  const [pendingPin, setPendingPin] = useState<{ eventName: string; payload: string } | null>(null);
 
   const connectionStatus = useSocketStore((state) => state.connectionStatus);
   const currentConnection = useCurrentConnection();
@@ -234,21 +240,25 @@ export default function SendMessageModal({
     try {
       const pinPayload = payloadType === 'json' ? payload : JSON.stringify(payload);
 
-      await addPinnedMessage({
-        connectionId: currentConnection.id,
+      // Check for duplicates
+      const duplicateId = await findDuplicatePinnedMessage(
+        currentConnection.id,
         eventName,
-        payload: pinPayload,
-        label: eventName,
-      });
+        pinPayload
+      );
 
-      const pinnedList = await listPinnedMessages(currentConnection.id);
-      setPinnedMessages(pinnedList);
+      if (duplicateId) {
+        message.warning('This message is already pinned');
+        return;
+      }
 
-      message.success('Message pinned');
+      // Open modal for custom name
+      setPendingPin({ eventName, payload: pinPayload });
+      setPinModalOpen(true);
     } catch {
-      message.error('Failed to pin message');
+      message.error('Failed to check duplicate');
     }
-  }, [eventName, payload, payloadType, currentConnection, message, setPinnedMessages]);
+  }, [eventName, payload, payloadType, currentConnection, message]);
 
   // Load item into editor
   const loadIntoEditor = useCallback((name: string, payloadStr: string) => {
@@ -283,21 +293,58 @@ export default function SendMessageModal({
     async (name: string, payloadStr: string) => {
       if (!currentConnection) return;
       try {
-        await addPinnedMessage({
-          connectionId: currentConnection.id,
-          eventName: name,
-          payload: payloadStr,
-          label: name,
-        });
-        const pinnedList = await listPinnedMessages(currentConnection.id);
-        setPinnedMessages(pinnedList);
-        message.success('Pinned');
+        // Check for duplicates
+        const duplicateId = await findDuplicatePinnedMessage(
+          currentConnection.id,
+          name,
+          payloadStr
+        );
+
+        if (duplicateId) {
+          message.warning('This message is already pinned');
+          return;
+        }
+
+        // Open modal for custom name
+        setPendingPin({ eventName: name, payload: payloadStr });
+        setPinModalOpen(true);
       } catch {
-        message.error('Failed to pin');
+        message.error('Failed to check duplicate');
       }
     },
-    [currentConnection, setPinnedMessages, message]
+    [currentConnection, message]
   );
+
+  // Confirm pin with custom name
+  const handlePinConfirm = useCallback(
+    async (customName: string) => {
+      if (!currentConnection || !pendingPin) return;
+
+      try {
+        await addPinnedMessage({
+          connectionId: currentConnection.id,
+          eventName: pendingPin.eventName,
+          payload: pendingPin.payload,
+          label: customName,
+        });
+
+        const pinnedList = await listPinnedMessages(currentConnection.id);
+        setPinnedMessages(pinnedList);
+        message.success('Message pinned');
+      } catch {
+        message.error('Failed to pin');
+      } finally {
+        setPinModalOpen(false);
+        setPendingPin(null);
+      }
+    },
+    [currentConnection, pendingPin, setPinnedMessages, message]
+  );
+
+  function handlePinCancel() {
+    setPinModalOpen(false);
+    setPendingPin(null);
+  }
 
   // Clear emit logs
   const handleClearLogs = useCallback(async () => {
@@ -483,6 +530,17 @@ export default function SendMessageModal({
               scrollbar: {
                 verticalScrollbarSize: 8,
                 horizontalScrollbarSize: 8,
+              },
+              // Enable autocomplete
+              quickSuggestions: true,
+              suggestOnTriggerCharacters: true,
+              acceptSuggestionOnEnter: 'on',
+              tabCompletion: 'on',
+              wordBasedSuggestions: 'matchingDocuments',
+              suggest: {
+                showKeywords: true,
+                showSnippets: true,
+                showWords: true,
               },
             }}
           />
@@ -711,6 +769,14 @@ export default function SendMessageModal({
           Not connected to server. Please connect first.
         </div>
       )}
+
+      {/* Pin Name Modal */}
+      <PinNameModal
+        open={pinModalOpen}
+        onOk={handlePinConfirm}
+        onCancel={handlePinCancel}
+        defaultName={pendingPin?.eventName || ''}
+      />
     </Modal>
   );
 }

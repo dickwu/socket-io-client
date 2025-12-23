@@ -298,6 +298,20 @@ pub fn list_pinned_messages(connection_id: i64) -> Result<Vec<(i64, String, Stri
     Ok(results)
 }
 
+pub fn find_duplicate_pinned_message(connection_id: i64, event_name: &str, payload: &str) -> Result<Option<i64>> {
+    let conn = get_connection()?;
+    let mut stmt = conn.prepare(
+        "SELECT id FROM pinned_messages WHERE connection_id = ?1 AND event_name = ?2 AND payload = ?3 LIMIT 1"
+    )?;
+    
+    let mut rows = stmt.query(params![connection_id, event_name, payload])?;
+    if let Some(row) = rows.next()? {
+        Ok(Some(row.get(0)?))
+    } else {
+        Ok(None)
+    }
+}
+
 // App state operations
 pub fn set_app_state(key: &str, value: &str) -> Result<()> {
     let conn = get_connection()?;

@@ -161,6 +161,7 @@ pub fn run() {
             pinned::delete_pinned_message,
             pinned::reorder_pinned_messages,
             pinned::list_pinned_messages,
+            pinned::find_duplicate_pinned_message,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

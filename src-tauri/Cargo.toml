@@ -2,9 +2,9 @@
 name = "socket-io-client"
 version = "0.1.2"
 description = "A Socket.IO Client Desktop Application"
-authors = ["you"]
+authors = ["Peilin Wu"]
 license = "MIT"
-repository = ""
+repository = "https://github.com/dickwu/socket-io-client"
 edition = "2021"
 
 [lib]

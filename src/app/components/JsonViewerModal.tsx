@@ -8,15 +8,11 @@ import {
   CompressOutlined,
   ExpandAltOutlined,
   ColumnWidthOutlined,
+  CodeOutlined,
+  ApartmentOutlined,
 } from '@ant-design/icons';
-import Editor, { loader } from '@monaco-editor/react';
-
-// Configure Monaco to load from CDN
-loader.config({
-  paths: {
-    vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs',
-  },
-});
+import JsonEditorView from './JsonEditorView';
+import JsonTreeView from './JsonTreeView';
 
 interface JsonViewerModalProps {
   open: boolean;
@@ -27,6 +23,8 @@ interface JsonViewerModalProps {
   direction?: 'in' | 'out';
   timestamp?: Date;
 }
+
+type ViewMode = 'editor' | 'tree';
 
 export default function JsonViewerModal({
   open,
@@ -39,19 +37,23 @@ export default function JsonViewerModal({
 }: JsonViewerModalProps) {
   const { message } = App.useApp();
   const [content, setContent] = useState(payload);
-  const [isValidJson, setIsValidJson] = useState(false);
   const [wordWrap, setWordWrap] = useState<'on' | 'off'>('on');
   const [theme, setTheme] = useState<'vs-dark' | 'light'>('vs-dark');
+  const [viewMode, setViewMode] = useState<ViewMode>('tree');
+
+  // Check if payload is valid JSON
+  const isValidJson = (() => {
+    try {
+      JSON.parse(payload);
+      return true;
+    } catch {
+      return false;
+    }
+  })();
 
   // Reset content when payload changes
   useEffect(() => {
     setContent(payload);
-    try {
-      JSON.parse(payload);
-      setIsValidJson(true);
-    } catch {
-      setIsValidJson(false);
-    }
   }, [payload]);
 
   // Detect system theme
@@ -87,16 +89,6 @@ export default function JsonViewerModal({
     message.success('Copied to clipboard');
   }, [content, message]);
 
-  const handleExpandAll = useCallback(() => {
-    // Format with full indentation to show all expanded
-    try {
-      const parsed = JSON.parse(content);
-      const expanded = JSON.stringify(parsed, null, 2);
-      setContent(expanded);
-    } catch {
-      // Do nothing if invalid
-    }
-  }, [content]);
 
   const formatTime = (date: Date): string => {
     return date.toLocaleTimeString('en-US', {
@@ -109,39 +101,53 @@ export default function JsonViewerModal({
   };
 
   const modalTitle = (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-      <span>{title || 'JSON Viewer'}</span>
-      {eventName && (
-        <span
-          style={{
-            fontSize: 12,
-            fontWeight: 600,
-            color: direction === 'out' ? '#f59e0b' : '#10b981',
-            background: direction === 'out' ? 'rgba(245, 158, 11, 0.1)' : 'rgba(16, 185, 129, 0.1)',
-            padding: '2px 8px',
-            borderRadius: 4,
-          }}
-        >
-          {eventName}
-        </span>
-      )}
-      {timestamp && (
-        <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 400 }}>
-          {formatTime(timestamp)}
-        </span>
-      )}
-      {!isValidJson && (
-        <span
-          style={{
-            fontSize: 11,
-            color: '#ef4444',
-            background: 'rgba(239, 68, 68, 0.1)',
-            padding: '2px 8px',
-            borderRadius: 4,
-          }}
-        >
-          Not JSON
-        </span>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <span>{title || 'JSON Viewer'}</span>
+        {eventName && (
+          <span
+            style={{
+              fontSize: 12,
+              fontWeight: 600,
+              color: direction === 'out' ? '#f59e0b' : '#10b981',
+              background: direction === 'out' ? 'rgba(245, 158, 11, 0.1)' : 'rgba(16, 185, 129, 0.1)',
+              padding: '2px 8px',
+              borderRadius: 4,
+            }}
+          >
+            {eventName}
+          </span>
+        )}
+        {timestamp && (
+          <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 400 }}>
+            {formatTime(timestamp)}
+          </span>
+        )}
+        {!isValidJson && (
+          <span
+            style={{
+              fontSize: 11,
+              color: '#ef4444',
+              background: 'rgba(239, 68, 68, 0.1)',
+              padding: '2px 8px',
+              borderRadius: 4,
+            }}
+          >
+            Not JSON
+          </span>
+        )}
+      </div>
+      {isValidJson && (
+        <Segmented
+          style={{ marginRight: '30px' }}
+          size="small"
+          value={viewMode}
+          onChange={(v) => setViewMode(v as ViewMode)}
+          options={[
+            { label: <><ApartmentOutlined /> Tree</>, value: 'tree' },
+            { label: <><CodeOutlined /> Editor</>, value: 'editor' },
+          ]}
+        />
       )}
     </div>
   );
@@ -151,26 +157,28 @@ export default function JsonViewerModal({
       title={modalTitle}
       open={open}
       onCancel={onClose}
-      width={800}
+      width={'90%'}
       centered
       styles={{
-        body: { padding: 0 },
+        body: { padding: 0, top: '5%' },
       }}
       footer={
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Space>
-            <Segmented
-              size="small"
-              value={wordWrap}
-              onChange={(v) => setWordWrap(v as 'on' | 'off')}
-              options={[
-                { label: <ColumnWidthOutlined />, value: 'on' },
-                { label: <ExpandAltOutlined />, value: 'off' },
-              ]}
-            />
+            {viewMode === 'editor' && (
+              <Segmented
+                size="small"
+                value={wordWrap}
+                onChange={(v) => setWordWrap(v as 'on' | 'off')}
+                options={[
+                  { label: <ColumnWidthOutlined />, value: 'on' },
+                  { label: <ExpandAltOutlined />, value: 'off' },
+                ]}
+              />
+            )}
           </Space>
           <Space>
-            {isValidJson && (
+            {isValidJson && viewMode === 'editor' && (
               <>
                 <Tooltip title="Format JSON">
                   <Button size="small" icon={<FormatPainterOutlined />} onClick={handleFormat}>
@@ -194,34 +202,21 @@ export default function JsonViewerModal({
         </div>
       }
     >
-      <div style={{ height: 500, borderTop: '1px solid var(--border-color, #e5e7eb)' }}>
-        <Editor
-          height="100%"
-          language={isValidJson ? 'json' : 'plaintext'}
-          value={content}
-          onChange={(value) => setContent(value || '')}
-          theme={theme}
-          options={{
-            readOnly: false,
-            minimap: { enabled: false },
-            fontSize: 13,
-            fontFamily: "'SF Mono', 'Fira Code', 'Consolas', monospace",
-            lineNumbers: 'on',
-            scrollBeyondLastLine: false,
-            wordWrap: wordWrap,
-            automaticLayout: true,
-            folding: true,
-            foldingStrategy: 'indentation',
-            formatOnPaste: true,
-            tabSize: 2,
-            padding: { top: 12, bottom: 12 },
-            renderLineHighlight: 'line',
-            scrollbar: {
-              verticalScrollbarSize: 8,
-              horizontalScrollbarSize: 8,
-            },
-          }}
-        />
+      <div style={{ height: '80vh', borderTop: '1px solid var(--border-color, #e5e7eb)' }}>
+        {viewMode === 'editor' ? (
+          <JsonEditorView
+            content={content}
+            isValidJson={isValidJson}
+            wordWrap={wordWrap}
+            theme={theme}
+            onChange={setContent}
+          />
+        ) : (
+          <JsonTreeView
+            content={content}
+            isValidJson={isValidJson}
+          />
+        )}
       </div>
     </Modal>
   );

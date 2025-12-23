@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Button, Tooltip, Empty, App } from 'antd';
 import {
   DownOutlined,
@@ -10,7 +10,8 @@ import {
   EditOutlined,
 } from '@ant-design/icons';
 import { useSocketStore, useCurrentConnection } from '@/app/stores/socketStore';
-import { listPinnedMessages, deletePinnedMessage } from '@/app/hooks/useTauri';
+import { listPinnedMessages, deletePinnedMessage, updatePinnedMessage } from '@/app/hooks/useTauri';
+import PinNameModal from './PinNameModal';
 
 export default function PinnedList() {
   const { message, modal } = App.useApp();
@@ -22,6 +23,10 @@ export default function PinnedList() {
 
   const currentConnection = useCurrentConnection();
 
+  // Rename modal state
+  const [renameModalOpen, setRenameModalOpen] = useState(false);
+  const [editingPin, setEditingPin] = useState<{ id: number; eventName: string; payload: string; currentLabel: string } | null>(null);
+
   // Load pinned messages when connection changes
   useEffect(() => {
     if (currentConnection) {
@@ -29,6 +34,7 @@ export default function PinnedList() {
     } else {
       setPinnedMessages([]);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentConnection?.id]);
 
   async function loadPinnedMessages() {
@@ -46,9 +52,36 @@ export default function PinnedList() {
     openSendModal(eventName, payload);
   }
 
-  function handleEdit(eventName: string, payload: string) {
-    // Open send modal for editing
-    openSendModal(eventName, payload);
+  function handleEdit(id: number, eventName: string, payload: string, currentLabel: string) {
+    // Open rename modal
+    setEditingPin({ id, eventName, payload, currentLabel });
+    setRenameModalOpen(true);
+  }
+
+  async function handleRenameConfirm(newLabel: string) {
+    if (!editingPin) return;
+
+    try {
+      await updatePinnedMessage({
+        id: editingPin.id,
+        eventName: editingPin.eventName,
+        payload: editingPin.payload,
+        label: newLabel,
+      });
+
+      await loadPinnedMessages();
+      message.success('Pinned message renamed');
+    } catch {
+      message.error('Failed to rename');
+    } finally {
+      setRenameModalOpen(false);
+      setEditingPin(null);
+    }
+  }
+
+  function handleRenameCancel() {
+    setRenameModalOpen(false);
+    setEditingPin(null);
   }
 
   async function handleDelete(id: number) {
@@ -98,12 +131,12 @@ export default function PinnedList() {
                       onClick={() => handleSend(pinned.eventName, pinned.payload)}
                     />
                   </Tooltip>
-                  <Tooltip title="Edit & Send">
+                  <Tooltip title="Rename">
                     <Button
                       type="text"
                       size="small"
                       icon={<EditOutlined />}
-                      onClick={() => handleEdit(pinned.eventName, pinned.payload)}
+                      onClick={() => handleEdit(pinned.id, pinned.eventName, pinned.payload, pinned.label || pinned.eventName)}
                     />
                   </Tooltip>
                   <Tooltip title="Delete">
@@ -121,6 +154,15 @@ export default function PinnedList() {
           )}
         </div>
       )}
+
+      {/* Rename Modal */}
+      <PinNameModal
+        open={renameModalOpen}
+        onOk={handleRenameConfirm}
+        onCancel={handleRenameCancel}
+        defaultName={editingPin?.currentLabel || ''}
+        title="Rename Pinned Message"
+      />
     </div>
   );
 }

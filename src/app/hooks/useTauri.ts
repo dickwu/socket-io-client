@@ -168,3 +168,11 @@ export async function deletePinnedMessage(id: number): Promise<void> {
 export async function reorderPinnedMessages(ids: number[]): Promise<void> {
   await invoke('reorder_pinned_messages', { ids });
 }
+
+export async function findDuplicatePinnedMessage(
+  connectionId: number,
+  eventName: string,
+  payload: string
+): Promise<number | null> {
+  return await invoke('find_duplicate_pinned_message', { connectionId, eventName, payload });
+}

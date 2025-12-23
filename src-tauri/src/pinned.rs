@@ -70,3 +70,8 @@ pub fn list_pinned_messages(connection_id: i64) -> Result<Vec<PinnedMessage>, St
         }
     }).collect())
 }
+
+#[tauri::command]
+pub fn find_duplicate_pinned_message(connection_id: i64, event_name: String, payload: String) -> Result<Option<i64>, String> {
+    db::find_duplicate_pinned_message(connection_id, &event_name, &payload).map_err(|e| e.to_string())
+}

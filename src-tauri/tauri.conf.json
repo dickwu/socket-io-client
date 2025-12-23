@@ -44,7 +44,7 @@
         "https://github.com/dickwu/socket-io-client/releases/latest/download/latest.json"
       ],
       "windows": {
-        "installMode": "passive"
+        "installMode": "quiet"
       }
     }
   }
