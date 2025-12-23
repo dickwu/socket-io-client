@@ -39,7 +39,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDdDOUJGNTcxMDQyRjM5NjQKUldSa09TOEVjZldiZkpNeUU2UzFYYTJNaGtSR1IyVFR6dDF4b29EQVBZSFh3ajJTZ0lLeTV2ZHgK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDdGNDgwNjRGQ0FEMEZGRjQKUldUMC85REtUd1pJZjdJcE1pa1d0ZWdiSFJJRXhCVUMvaWVLMEJscmdQRGs1TXlaR281bExnS24K",
       "endpoints": ["https://github.com/dickwu/socket-io-client/releases/latest/download/latest.json"],
       "windows": {
         "installMode": "passive"
