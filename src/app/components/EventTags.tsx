@@ -7,14 +7,14 @@ export default function EventTags() {
   const filteredEventName = useSocketStore((state) => state.filteredEventName);
   const setFilteredEventName = useSocketStore((state) => state.setFilteredEventName);
   const eventCounts = useEventCounts();
-  
+
   const eventNames = Object.keys(eventCounts).sort();
   const totalCount = Object.values(eventCounts).reduce((a, b) => a + b, 0);
-  
+
   if (eventNames.length === 0) {
     return null;
   }
-  
+
   return (
     <div className="event-tags">
       <Tag
@@ -25,11 +25,11 @@ export default function EventTags() {
       >
         All <Badge count={totalCount} size="small" style={{ marginLeft: 4 }} />
       </Tag>
-      
+
       {eventNames.map((name) => {
         const isActive = filteredEventName === name;
         const isSystemEvent = ['connect', 'disconnect', 'connect_error'].includes(name);
-        
+
         return (
           <Tag
             key={name}

@@ -1,12 +1,7 @@
 'use client';
 
 import { invoke } from '@tauri-apps/api/core';
-import {
-  Connection,
-  ConnectionEvent,
-  EmitLog,
-  PinnedMessage,
-} from '@/app/stores/socketStore';
+import { Connection, ConnectionEvent, EmitLog, PinnedMessage } from '@/app/stores/socketStore';
 
 // Convert snake_case to camelCase
 function toCamelCase<T>(obj: Record<string, unknown>): T {

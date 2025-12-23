@@ -11,6 +11,8 @@ import {
   EditOutlined,
   HistoryOutlined,
 } from '@ant-design/icons';
+import Editor, { loader } from '@monaco-editor/react';
+import type { editor } from 'monaco-editor';
 import { useSocketStore, useCurrentConnection } from '@/app/stores/socketStore';
 import useSocket from '@/app/hooks/useSocket';
 import {
@@ -22,7 +24,12 @@ import {
   clearEmitLogs,
 } from '@/app/hooks/useTauri';
 
-const { TextArea } = Input;
+// Configure Monaco to load from CDN
+loader.config({
+  paths: {
+    vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs',
+  },
+});
 
 type PayloadType = 'json' | 'string';
 
@@ -60,6 +67,7 @@ export default function SendMessageModal({
   const [payloadType, setPayloadType] = useState<PayloadType>('json');
   const [sending, setSending] = useState(false);
   const [jsonError, setJsonError] = useState<string | null>(null);
+  const [theme, setTheme] = useState<'vs-dark' | 'light'>('vs-dark');
 
   const connectionStatus = useSocketStore((state) => state.connectionStatus);
   const currentConnection = useCurrentConnection();
@@ -78,7 +86,7 @@ export default function SendMessageModal({
       setEventName(initialEventName);
       setPayload(initialPayload);
       setJsonError(null);
-      
+
       // Auto-detect payload type
       try {
         JSON.parse(initialPayload);
@@ -88,6 +96,12 @@ export default function SendMessageModal({
       }
     }
   }, [open, initialEventName, initialPayload]);
+
+  // Detect system theme
+  useEffect(() => {
+    const isDark = document.documentElement.classList.contains('dark');
+    setTheme(isDark ? 'vs-dark' : 'light');
+  }, [open]);
 
   // Validate JSON when payload changes
   useEffect(() => {
@@ -194,7 +208,17 @@ export default function SendMessageModal({
     } finally {
       setSending(false);
     }
-  }, [eventName, payload, payloadType, isConnected, emit, currentConnection, message, setEmitLogs, onClose]);
+  }, [
+    eventName,
+    payload,
+    payloadType,
+    isConnected,
+    emit,
+    currentConnection,
+    message,
+    setEmitLogs,
+    onClose,
+  ]);
 
   const handlePin = useCallback(async () => {
     if (!eventName.trim()) {
@@ -239,35 +263,41 @@ export default function SendMessageModal({
   }, []);
 
   // Delete pinned message
-  const handleDeletePinned = useCallback(async (id: number) => {
-    if (!currentConnection) return;
-    try {
-      await deletePinnedMessage(id);
-      const pinnedList = await listPinnedMessages(currentConnection.id);
-      setPinnedMessages(pinnedList);
-      message.success('Deleted');
-    } catch {
-      message.error('Failed to delete');
-    }
-  }, [currentConnection, setPinnedMessages, message]);
+  const handleDeletePinned = useCallback(
+    async (id: number) => {
+      if (!currentConnection) return;
+      try {
+        await deletePinnedMessage(id);
+        const pinnedList = await listPinnedMessages(currentConnection.id);
+        setPinnedMessages(pinnedList);
+        message.success('Deleted');
+      } catch {
+        message.error('Failed to delete');
+      }
+    },
+    [currentConnection, setPinnedMessages, message]
+  );
 
   // Pin from emit log
-  const handlePinFromLog = useCallback(async (name: string, payloadStr: string) => {
-    if (!currentConnection) return;
-    try {
-      await addPinnedMessage({
-        connectionId: currentConnection.id,
-        eventName: name,
-        payload: payloadStr,
-        label: name,
-      });
-      const pinnedList = await listPinnedMessages(currentConnection.id);
-      setPinnedMessages(pinnedList);
-      message.success('Pinned');
-    } catch {
-      message.error('Failed to pin');
-    }
-  }, [currentConnection, setPinnedMessages, message]);
+  const handlePinFromLog = useCallback(
+    async (name: string, payloadStr: string) => {
+      if (!currentConnection) return;
+      try {
+        await addPinnedMessage({
+          connectionId: currentConnection.id,
+          eventName: name,
+          payload: payloadStr,
+          label: name,
+        });
+        const pinnedList = await listPinnedMessages(currentConnection.id);
+        setPinnedMessages(pinnedList);
+        message.success('Pinned');
+      } catch {
+        message.error('Failed to pin');
+      }
+    },
+    [currentConnection, setPinnedMessages, message]
+  );
 
   // Clear emit logs
   const handleClearLogs = useCallback(async () => {
@@ -282,36 +312,51 @@ export default function SendMessageModal({
   }, [currentConnection, setEmitLogs, message]);
 
   // Send directly from pinned/history
-  const handleSendDirect = useCallback(async (name: string, payloadStr: string) => {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(payloadStr);
-    } catch {
-      parsed = payloadStr;
-    }
-    const success = emit(name, parsed);
-    if (success) {
-      if (currentConnection) {
-        try {
-          await addEmitLog(currentConnection.id, name, payloadStr);
-          const logs = await listEmitLogs(currentConnection.id);
-          setEmitLogs(logs);
-        } catch {
-          // Ignore
-        }
+  const handleSendDirect = useCallback(
+    async (name: string, payloadStr: string) => {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(payloadStr);
+      } catch {
+        parsed = payloadStr;
       }
-      message.success('Sent');
-    } else {
-      message.warning('Not connected');
-    }
-  }, [emit, currentConnection, setEmitLogs, message]);
+      const success = emit(name, parsed);
+      if (success) {
+        if (currentConnection) {
+          try {
+            await addEmitLog(currentConnection.id, name, payloadStr);
+            const logs = await listEmitLogs(currentConnection.id);
+            setEmitLogs(logs);
+          } catch {
+            // Ignore
+          }
+        }
+        message.success('Sent');
+      } else {
+        message.warning('Not connected');
+      }
+    },
+    [emit, currentConnection, setEmitLogs, message]
+  );
 
-  // Handle Cmd/Ctrl+Enter to send
+  // Handle Cmd/Ctrl+Enter to send (for event name input)
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault();
       handleSend();
     }
+  };
+
+  // Handle Monaco Editor mount to register keyboard shortcuts
+  const handleEditorMount = (editor: editor.IStandaloneCodeEditor) => {
+    // Register Cmd/Ctrl+Enter to send
+    editor.addCommand(
+      // Monaco.KeyMod.CtrlCmd | Monaco.KeyCode.Enter
+      2048 | 3, // CtrlCmd + Enter
+      () => {
+        handleSend();
+      }
+    );
   };
 
   return (
@@ -402,16 +447,46 @@ export default function SendMessageModal({
           </Radio.Group>
         </div>
 
-        <TextArea
-          className="json-editor"
-          placeholder={payloadType === 'json' ? '{"message": "Hello"}' : 'Hello, World!'}
-          value={payload}
-          onChange={(e) => setPayload(e.target.value)}
-          rows={10}
-          onKeyDown={handleKeyDown}
-          status={payloadType === 'json' && jsonError ? 'error' : undefined}
-          style={{ fontFamily: "'SF Mono', 'Fira Code', 'Consolas', monospace", fontSize: 13 }}
-        />
+        <div
+          style={{
+            height: 240,
+            border:
+              payloadType === 'json' && jsonError
+                ? '1px solid #ef4444'
+                : '1px solid var(--border-color, #d9d9d9)',
+            borderRadius: 6,
+            overflow: 'hidden',
+          }}
+        >
+          <Editor
+            height="100%"
+            language={payloadType === 'json' ? 'json' : 'plaintext'}
+            value={payload}
+            onChange={(value) => setPayload(value || '')}
+            onMount={handleEditorMount}
+            theme={theme}
+            options={{
+              readOnly: false,
+              minimap: { enabled: false },
+              fontSize: 13,
+              fontFamily: "'SF Mono', 'Fira Code', 'Consolas', monospace",
+              lineNumbers: 'on',
+              scrollBeyondLastLine: false,
+              wordWrap: 'on',
+              automaticLayout: true,
+              folding: true,
+              foldingStrategy: 'indentation',
+              formatOnPaste: true,
+              tabSize: 2,
+              padding: { top: 12, bottom: 12 },
+              renderLineHighlight: 'line',
+              scrollbar: {
+                verticalScrollbarSize: 8,
+                horizontalScrollbarSize: 8,
+              },
+            }}
+          />
+        </div>
 
         {payloadType === 'json' && jsonError && (
           <div style={{ color: '#ef4444', fontSize: 12, marginTop: 4 }}>{jsonError}</div>
@@ -479,20 +554,46 @@ export default function SendMessageModal({
                     >
                       <span style={{ flex: 1, fontWeight: 500, fontSize: 12 }}>{p.eventName}</span>
                       <span
-                        style={{ flex: 2, fontSize: 11, color: '#888', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                        style={{
+                          flex: 2,
+                          fontSize: 11,
+                          color: '#888',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
                         title={p.payload}
                       >
                         {truncatePayload(p.payload)}
                       </span>
                       <Space size={2}>
-                        <Tooltip title={connectionStatus === 'connected' ? 'Send' : 'Not connected'}>
-                          <Button size="small" type="primary" icon={<SendOutlined />} onClick={() => handleSendDirect(p.eventName, p.payload)} disabled={connectionStatus !== 'connected'} />
+                        <Tooltip
+                          title={connectionStatus === 'connected' ? 'Send' : 'Not connected'}
+                        >
+                          <Button
+                            size="small"
+                            type="primary"
+                            icon={<SendOutlined />}
+                            onClick={() => handleSendDirect(p.eventName, p.payload)}
+                            disabled={connectionStatus !== 'connected'}
+                          />
                         </Tooltip>
                         <Tooltip title="Load">
-                          <Button size="small" type="text" icon={<EditOutlined />} onClick={() => loadIntoEditor(p.eventName, p.payload)} />
+                          <Button
+                            size="small"
+                            type="text"
+                            icon={<EditOutlined />}
+                            onClick={() => loadIntoEditor(p.eventName, p.payload)}
+                          />
                         </Tooltip>
                         <Tooltip title="Delete">
-                          <Button size="small" type="text" danger icon={<DeleteOutlined />} onClick={() => handleDeletePinned(p.id)} />
+                          <Button
+                            size="small"
+                            type="text"
+                            danger
+                            icon={<DeleteOutlined />}
+                            onClick={() => handleDeletePinned(p.id)}
+                          />
                         </Tooltip>
                       </Space>
                     </div>
@@ -515,7 +616,13 @@ export default function SendMessageModal({
                 ) : (
                   <>
                     <div style={{ textAlign: 'right', marginBottom: 4 }}>
-                      <Button size="small" type="text" danger icon={<DeleteOutlined />} onClick={handleClearLogs}>
+                      <Button
+                        size="small"
+                        type="text"
+                        danger
+                        icon={<DeleteOutlined />}
+                        onClick={handleClearLogs}
+                      >
                         Clear
                       </Button>
                     </div>
@@ -532,23 +639,52 @@ export default function SendMessageModal({
                           marginBottom: 4,
                         }}
                       >
-                        <span style={{ fontWeight: 500, fontSize: 12, minWidth: 80 }}>{log.eventName}</span>
+                        <span style={{ fontWeight: 500, fontSize: 12, minWidth: 80 }}>
+                          {log.eventName}
+                        </span>
                         <span
-                          style={{ flex: 1, fontSize: 11, color: '#888', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                          style={{
+                            flex: 1,
+                            fontSize: 11,
+                            color: '#888',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
                           title={log.payload}
                         >
                           {truncatePayload(log.payload)}
                         </span>
-                        <span style={{ fontSize: 10, color: '#aaa' }}>{formatTime(log.sentAt)}</span>
+                        <span style={{ fontSize: 10, color: '#aaa' }}>
+                          {formatTime(log.sentAt)}
+                        </span>
                         <Space size={2}>
-                          <Tooltip title={connectionStatus === 'connected' ? 'Send' : 'Not connected'}>
-                            <Button size="small" type="primary" icon={<SendOutlined />} onClick={() => handleSendDirect(log.eventName, log.payload)} disabled={connectionStatus !== 'connected'} />
+                          <Tooltip
+                            title={connectionStatus === 'connected' ? 'Send' : 'Not connected'}
+                          >
+                            <Button
+                              size="small"
+                              type="primary"
+                              icon={<SendOutlined />}
+                              onClick={() => handleSendDirect(log.eventName, log.payload)}
+                              disabled={connectionStatus !== 'connected'}
+                            />
                           </Tooltip>
                           <Tooltip title="Load">
-                            <Button size="small" type="text" icon={<EditOutlined />} onClick={() => loadIntoEditor(log.eventName, log.payload)} />
+                            <Button
+                              size="small"
+                              type="text"
+                              icon={<EditOutlined />}
+                              onClick={() => loadIntoEditor(log.eventName, log.payload)}
+                            />
                           </Tooltip>
                           <Tooltip title="Pin">
-                            <Button size="small" type="text" icon={<PushpinOutlined />} onClick={() => handlePinFromLog(log.eventName, log.payload)} />
+                            <Button
+                              size="small"
+                              type="text"
+                              icon={<PushpinOutlined />}
+                              onClick={() => handlePinFromLog(log.eventName, log.payload)}
+                            />
                           </Tooltip>
                         </Space>
                       </div>

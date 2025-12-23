@@ -34,7 +34,9 @@ export default function Home() {
   const { theme, toggleTheme } = useTheme();
 
   const [appVersion, setAppVersion] = useState<string>('');
-  const [updateAvailable, setUpdateAvailable] = useState<{ version: string; body?: string } | null>(null);
+  const [updateAvailable, setUpdateAvailable] = useState<{ version: string; body?: string } | null>(
+    null
+  );
   const [checkingUpdate, setCheckingUpdate] = useState(false);
 
   const currentConnection = useCurrentConnection();
@@ -106,20 +108,23 @@ export default function Home() {
     }
   }, [message, modal]);
 
-  const loadConnectionData = useCallback(async (connectionId: number) => {
-    try {
-      const [events, logs, pinned] = await Promise.all([
-        listConnectionEvents(connectionId),
-        listEmitLogs(connectionId),
-        listPinnedMessages(connectionId),
-      ]);
-      setConnectionEvents(events);
-      setEmitLogs(logs);
-      setPinnedMessages(pinned);
-    } catch {
-      // Ignore errors
-    }
-  }, [setConnectionEvents, setEmitLogs, setPinnedMessages]);
+  const loadConnectionData = useCallback(
+    async (connectionId: number) => {
+      try {
+        const [events, logs, pinned] = await Promise.all([
+          listConnectionEvents(connectionId),
+          listEmitLogs(connectionId),
+          listPinnedMessages(connectionId),
+        ]);
+        setConnectionEvents(events);
+        setEmitLogs(logs);
+        setPinnedMessages(pinned);
+      } catch {
+        // Ignore errors
+      }
+    },
+    [setConnectionEvents, setEmitLogs, setPinnedMessages]
+  );
 
   useEffect(() => {
     initializeApp();
@@ -183,13 +188,7 @@ export default function Home() {
               <>
                 <Button
                   type={connectionStatus === 'connected' ? 'default' : 'primary'}
-                  icon={
-                    connectionStatus === 'connected' ? (
-                      <DisconnectOutlined />
-                    ) : (
-                      <ApiOutlined />
-                    )
-                  }
+                  icon={connectionStatus === 'connected' ? <DisconnectOutlined /> : <ApiOutlined />}
                   onClick={handleConnect}
                   loading={connectionStatus === 'connecting'}
                 >
@@ -248,7 +247,9 @@ export default function Home() {
           <span>{currentConnection ? currentConnection.url : 'No connection selected'}</span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <span>
-              {currentConnection?.namespace !== '/' ? `Namespace: ${currentConnection?.namespace}` : ''}
+              {currentConnection?.namespace !== '/'
+                ? `Namespace: ${currentConnection?.namespace}`
+                : ''}
             </span>
             <Tooltip title="Check for updates">
               <Badge dot={!!updateAvailable} offset={[-2, 2]}>

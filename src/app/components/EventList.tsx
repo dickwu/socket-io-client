@@ -55,15 +55,13 @@ function truncateLine(line: string, maxLength: number): string {
 function getPreviewPayload(payload: string, maxLines: number): string {
   const formatted = formatPayload(payload);
   const lines = formatted.split('\n');
-  
+
   // Truncate each line and limit total lines
-  const previewLines = lines
-    .slice(0, maxLines)
-    .map(line => truncateLine(line, MAX_LINE_LENGTH));
-  
+  const previewLines = lines.slice(0, maxLines).map((line) => truncateLine(line, MAX_LINE_LENGTH));
+
   const hasMoreLines = lines.length > maxLines;
-  const hasLongLines = lines.some(line => line.length > MAX_LINE_LENGTH);
-  
+  const hasLongLines = lines.some((line) => line.length > MAX_LINE_LENGTH);
+
   if (hasMoreLines || hasLongLines) {
     return previewLines.join('\n') + '\n  ...';
   }
@@ -88,8 +86,9 @@ function EventItem({ event, onOpenViewer }: EventItemProps) {
   const formattedPayload = formatPayload(event.payload);
   const lines = formattedPayload.split('\n');
   const lineCount = lines.length;
-  const hasLongLines = lines.some(line => line.length > MAX_LINE_LENGTH);
-  const isLarge = formattedPayload.length > COLLAPSE_THRESHOLD || lineCount > MAX_PREVIEW_LINES || hasLongLines;
+  const hasLongLines = lines.some((line) => line.length > MAX_LINE_LENGTH);
+  const isLarge =
+    formattedPayload.length > COLLAPSE_THRESHOLD || lineCount > MAX_PREVIEW_LINES || hasLongLines;
   const [expanded, setExpanded] = useState(false);
   const isJson = isJsonParseable(event.payload);
 
@@ -99,7 +98,7 @@ function EventItem({ event, onOpenViewer }: EventItemProps) {
       navigator.clipboard.writeText(event.payload);
       message.success('Copied to clipboard');
     },
-    [event.payload, message],
+    [event.payload, message]
   );
 
   const handleOpenViewer = useCallback(
@@ -107,21 +106,17 @@ function EventItem({ event, onOpenViewer }: EventItemProps) {
       e.stopPropagation();
       onOpenViewer(event);
     },
-    [event, onOpenViewer],
+    [event, onOpenViewer]
   );
 
-  const toggleExpand = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation();
-      setExpanded((prev) => !prev);
-    },
-    [],
-  );
+  const toggleExpand = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    setExpanded((prev) => !prev);
+  }, []);
 
   // Content to display
-  const displayContent = isLarge && !expanded 
-    ? getPreviewPayload(event.payload, MAX_PREVIEW_LINES)
-    : formattedPayload;
+  const displayContent =
+    isLarge && !expanded ? getPreviewPayload(event.payload, MAX_PREVIEW_LINES) : formattedPayload;
 
   return (
     <div className="event-item animate-slide-in">
@@ -138,11 +133,7 @@ function EventItem({ event, onOpenViewer }: EventItemProps) {
           {event.eventName}
         </span>
         {isJson && <span className="event-item-badge json-badge">JSON</span>}
-        {isLarge && (
-          <span className="event-item-badge size-badge">
-            {lineCount} lines
-          </span>
-        )}
+        {isLarge && <span className="event-item-badge size-badge">{lineCount} lines</span>}
         <span className="event-item-time">{formatTime(event.timestamp)}</span>
       </div>
 
@@ -157,9 +148,7 @@ function EventItem({ event, onOpenViewer }: EventItemProps) {
 
         {isLarge && !expanded && (
           <div className="event-item-fade-overlay" onClick={toggleExpand}>
-            <span className="event-item-expand-text">
-              Click to expand ({lineCount} lines)
-            </span>
+            <span className="event-item-expand-text">Click to expand ({lineCount} lines)</span>
           </div>
         )}
       </div>
@@ -256,12 +245,7 @@ export default function EventList() {
             <Button icon={<ArrowUpOutlined />} onClick={scrollToTop} size="small" />
           </Tooltip>
           <Tooltip title="Clear all events">
-            <Button
-              danger
-              icon={<ClearOutlined />}
-              onClick={clearReceivedEvents}
-              size="small"
-            >
+            <Button danger icon={<ClearOutlined />} onClick={clearReceivedEvents} size="small">
               Clear
             </Button>
           </Tooltip>

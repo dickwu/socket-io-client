@@ -97,20 +97,6 @@ The app uses SQLite to persist data:
 - **pinned_messages**: Saved favorite messages
 - **app_state**: Application state (current selection)
 
-## Releases
-
-Releases are created automatically via GitHub Actions when a version tag is pushed:
-
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-This triggers a build for:
-- macOS (ARM64 + x64)
-- Linux (AppImage + DEB)
-- Windows (MSI + NSIS)
-
 ## License
 
 MIT

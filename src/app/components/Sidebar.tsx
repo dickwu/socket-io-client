@@ -24,15 +24,15 @@ export default function Sidebar() {
   const openSettingsModal = useSocketStore((state) => state.openSettingsModal);
   const sidebarCollapsed = useSocketStore((state) => state.sidebarCollapsed);
   const toggleSidebar = useSocketStore((state) => state.toggleSidebar);
-  
+
   const currentConnection = useCurrentConnection();
   const { disconnect } = useSocket();
-  
+
   // Load connections on mount
   useEffect(() => {
     loadConnections();
   }, []);
-  
+
   async function loadConnections() {
     try {
       const conns = await listConnections();
@@ -42,15 +42,15 @@ export default function Sidebar() {
       console.log('Running outside Tauri');
     }
   }
-  
+
   async function handleSelectConnection(conn: Connection) {
     if (conn.id === currentConnectionId) return;
-    
+
     // Disconnect current connection first
     if (connectionStatus === 'connected') {
       disconnect();
     }
-    
+
     setCurrentConnectionId(conn.id);
     try {
       await setCurrentConnection(conn.id);
@@ -58,10 +58,10 @@ export default function Sidebar() {
       // Ignore error
     }
   }
-  
+
   async function handleDeleteConnection(conn: Connection, e: React.MouseEvent) {
     e.stopPropagation();
-    
+
     modal.confirm({
       title: 'Delete Connection',
       content: `Are you sure you want to delete "${conn.name}"?`,
@@ -71,11 +71,11 @@ export default function Sidebar() {
         try {
           await deleteConnection(conn.id);
           await loadConnections();
-          
+
           if (conn.id === currentConnectionId) {
             setCurrentConnectionId(null);
           }
-          
+
           message.success('Connection deleted');
         } catch (err) {
           message.error('Failed to delete connection');
@@ -83,12 +83,12 @@ export default function Sidebar() {
       },
     });
   }
-  
+
   function handleEditConnection(conn: Connection, e: React.MouseEvent) {
     e.stopPropagation();
     openSettingsModal(conn);
   }
-  
+
   function getStatusClass() {
     switch (connectionStatus) {
       case 'connected':
@@ -101,7 +101,7 @@ export default function Sidebar() {
         return 'disconnected';
     }
   }
-  
+
   return (
     <div className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
       <div className="sidebar-header">
@@ -111,14 +111,17 @@ export default function Sidebar() {
             <span>Connections</span>
           </div>
         )}
-        <div style={{ display: 'flex', gap: 4, marginLeft: sidebarCollapsed ? 'auto' : undefined, marginRight: sidebarCollapsed ? 'auto' : undefined }}>
+        <div
+          style={{
+            display: 'flex',
+            gap: 4,
+            marginLeft: sidebarCollapsed ? 'auto' : undefined,
+            marginRight: sidebarCollapsed ? 'auto' : undefined,
+          }}
+        >
           {!sidebarCollapsed && (
             <Tooltip title="New Connection">
-              <Button
-                type="text"
-                icon={<PlusOutlined />}
-                onClick={() => openSettingsModal()}
-              />
+              <Button type="text" icon={<PlusOutlined />} onClick={() => openSettingsModal()} />
             </Tooltip>
           )}
           <Tooltip title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
@@ -130,7 +133,7 @@ export default function Sidebar() {
           </Tooltip>
         </div>
       </div>
-      
+
       <div className="sidebar-content">
         {sidebarCollapsed ? (
           <div className="sidebar-collapsed-items">

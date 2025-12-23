@@ -6,15 +6,15 @@ export interface SocketConfig {
   url: string;
   namespace?: string;
   authToken?: string;
-  transports?: ('websocket')[];
+  transports?: 'websocket'[];
   options?: Partial<ManagerOptions & SocketOptions>;
 }
 
 export function createSocket(config: SocketConfig): Socket {
   const { url, namespace = '/', authToken, transports, options = {} } = config;
-  
+
   const fullUrl = namespace === '/' ? url : `${url}${namespace}`;
-  
+
   const socketOptions: Partial<ManagerOptions & SocketOptions> = {
     ...options,
     autoConnect: false,
@@ -24,15 +24,15 @@ export function createSocket(config: SocketConfig): Socket {
     reconnectionDelayMax: 5000,
     timeout: 20000,
   };
-  
+
   if (transports?.length) {
     socketOptions.transports = transports;
   }
-  
+
   if (authToken) {
     socketOptions.auth = { token: authToken };
   }
-  
+
   socket = io(fullUrl, socketOptions);
   return socket;
 }
