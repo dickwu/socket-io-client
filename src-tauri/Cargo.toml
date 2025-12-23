@@ -1,6 +1,6 @@
 [package]
 name = "socket-io-client"
-version = "0.1.1"
+version = "0.1.2"
 description = "A Socket.IO Client Desktop Application"
 authors = ["you"]
 license = "MIT"
