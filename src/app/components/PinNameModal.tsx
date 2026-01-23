@@ -36,12 +36,12 @@ export default function PinNameModal({
   const handleOk = () => {
     form.validateFields().then((values) => {
       onOk(values.name.trim() || defaultName);
-      form.resetFields();
+      // Don't call form.resetFields() here - Modal's destroyOnHidden will handle cleanup
     });
   };
 
   const handleCancel = () => {
-    form.resetFields();
+    // Don't call form.resetFields() here - Modal's destroyOnHidden will handle cleanup
     onCancel();
   };
 

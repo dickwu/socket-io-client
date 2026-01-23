@@ -41,7 +41,13 @@ export default function ConnectionModal() {
 
   // Load form data when editing
   useEffect(() => {
-    if (isOpen && editingConnection) {
+    if (!isOpen) {
+      // Modal is closed - Form is destroyed, don't call form methods
+      setEvents([]);
+      return;
+    }
+
+    if (editingConnection) {
       form.setFieldsValue({
         name: editingConnection.name,
         url: editingConnection.url,
