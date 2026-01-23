@@ -2,6 +2,7 @@
 
 import { useState, useEffect, createContext, useContext } from 'react';
 import { App, ConfigProvider, theme } from 'antd';
+import { initSocketListeners } from '@/app/lib/socketListeners';
 
 type Theme = 'light' | 'dark';
 
@@ -22,11 +23,15 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   const [currentTheme, setCurrentTheme] = useState<Theme>('dark');
 
   useEffect(() => {
+    // Initialize theme
     const saved = localStorage.getItem('theme') as Theme | null;
     const initial =
       saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
     setCurrentTheme(initial);
     document.documentElement.classList.toggle('dark', initial === 'dark');
+
+    // Initialize Tauri socket listeners (once, app-wide)
+    void initSocketListeners();
   }, []);
 
   function toggleTheme() {

@@ -94,7 +94,7 @@ export default function JsonTreeView({ content, isValidJson }: JsonTreeViewProps
   const PathTag = ({ path }: { path: string }) => {
     const depth = getDepth(path);
     const color = getColorByDepth(depth);
-    
+
     return (
       <span
         onClick={(e) => {
@@ -238,7 +238,7 @@ export default function JsonTreeView({ content, isValidJson }: JsonTreeViewProps
     if (!str || str.length < 2) return { isJson: false };
     const trimmed = str.trim();
     if (!(trimmed.startsWith('{') || trimmed.startsWith('['))) return { isJson: false };
-    
+
     try {
       const parsed = JSON.parse(trimmed);
       return { isJson: true, parsed };
@@ -250,64 +250,75 @@ export default function JsonTreeView({ content, isValidJson }: JsonTreeViewProps
   // Build tree data from JSON
   const buildTreeData = (obj: unknown, path = '$', key = 'root'): TreeDataNode[] => {
     if (obj === null) {
-      return [{
-        key: path,
-        title: (
-          <span>
-            <PathTag path={path} />
-            <span style={{ fontWeight: 500 }}>{key}: </span>
-            <span style={{ color: '#6b7280', fontStyle: 'italic' }}>null</span>
-            <ActionIcon value={null} keyName={key} />
-          </span>
-        ),
-      }];
+      return [
+        {
+          key: path,
+          title: (
+            <span>
+              <PathTag path={path} />
+              <span style={{ fontWeight: 500 }}>{key}: </span>
+              <span style={{ color: '#6b7280', fontStyle: 'italic' }}>null</span>
+              <ActionIcon value={null} keyName={key} />
+            </span>
+          ),
+        },
+      ];
     }
 
     if (obj === undefined) {
-      return [{
-        key: path,
-        title: (
-          <span>
-            <PathTag path={path} />
-            <span style={{ fontWeight: 500 }}>{key}: </span>
-            <span style={{ color: '#6b7280', fontStyle: 'italic' }}>undefined</span>
-            <ActionIcon value={undefined} keyName={key} />
-          </span>
-        ),
-      }];
+      return [
+        {
+          key: path,
+          title: (
+            <span>
+              <PathTag path={path} />
+              <span style={{ fontWeight: 500 }}>{key}: </span>
+              <span style={{ color: '#6b7280', fontStyle: 'italic' }}>undefined</span>
+              <ActionIcon value={undefined} keyName={key} />
+            </span>
+          ),
+        },
+      ];
     }
 
     if (typeof obj === 'string') {
       // Check if it's an image data URI
       if (isImageDataUri(obj)) {
-        return [{
-          key: path,
-          title: (
-            <div>
+        return [
+          {
+            key: path,
+            title: (
               <div>
-                <PathTag path={path} />
-                <span style={{ fontWeight: 500 }}>{key}: </span>
-                <span style={{ color: '#10b981' }}>
-                  <FileImageOutlined style={{ marginRight: 4 }} />
-                  Image Data URI
-                </span>
-                <ActionIcon value={obj} keyName={key} />
+                <div>
+                  <PathTag path={path} />
+                  <span style={{ fontWeight: 500 }}>{key}: </span>
+                  <span style={{ color: '#10b981' }}>
+                    <FileImageOutlined style={{ marginRight: 4 }} />
+                    Image Data URI
+                  </span>
+                  <ActionIcon value={obj} keyName={key} />
+                </div>
+                <div style={{ marginTop: 8, marginLeft: 16 }}>
+                  <Image
+                    src={obj}
+                    alt="preview"
+                    style={{
+                      maxWidth: 200,
+                      maxHeight: 200,
+                      border: '1px solid #e5e7eb',
+                      borderRadius: 4,
+                    }}
+                    preview={{
+                      mask: 'Click to preview',
+                    }}
+                  />
+                </div>
               </div>
-              <div style={{ marginTop: 8, marginLeft: 16 }}>
-                <Image 
-                  src={obj} 
-                  alt="preview"
-                  style={{ maxWidth: 200, maxHeight: 200, border: '1px solid #e5e7eb', borderRadius: 4 }}
-                  preview={{
-                    mask: 'Click to preview'
-                  }}
-                />
-              </div>
-            </div>
-          ),
-        }];
+            ),
+          },
+        ];
       }
-      
+
       // Check if it's a JSON string
       const jsonCheck = tryParseJson(obj);
       if (jsonCheck.isJson && jsonCheck.parsed !== undefined) {
@@ -317,139 +328,158 @@ export default function JsonTreeView({ content, isValidJson }: JsonTreeViewProps
         let typeLabel = '';
 
         if (Array.isArray(parsed)) {
-          children = parsed.flatMap((item, index) => 
+          children = parsed.flatMap((item, index) =>
             buildTreeData(item, `${path}[${index}]`, `[${index}]`)
           );
           typeLabel = `Array(${parsed.length})`;
         } else if (typeof parsed === 'object' && parsed !== null) {
-          children = Object.entries(parsed).flatMap(([k, v]) => 
+          children = Object.entries(parsed).flatMap(([k, v]) =>
             buildTreeData(v, `${path}.${k}`, k)
           );
           typeLabel = `Object(${Object.keys(parsed).length})`;
         }
 
-        return [{
+        return [
+          {
+            key: path,
+            title: (
+              <span>
+                <PathTag path={path} />
+                <span style={{ fontWeight: 500 }}>{key}: </span>
+                <span
+                  style={{
+                    color: '#8b5cf6',
+                    fontSize: 11,
+                    background: 'rgba(139, 92, 246, 0.1)',
+                    padding: '1px 6px',
+                    borderRadius: 3,
+                  }}
+                >
+                  JSON String
+                </span>{' '}
+                <span style={{ color: '#6b7280', fontSize: 11 }}>{typeLabel}</span>
+              </span>
+            ),
+            children: children.length > 0 ? children : undefined,
+          },
+        ];
+      }
+
+      // Regular string
+      return [
+        {
           key: path,
           title: (
             <span>
               <PathTag path={path} />
               <span style={{ fontWeight: 500 }}>{key}: </span>
-              <span style={{ color: '#8b5cf6', fontSize: 11, background: 'rgba(139, 92, 246, 0.1)', padding: '1px 6px', borderRadius: 3 }}>
-                JSON String
-              </span>
-              {' '}
-              <span style={{ color: '#6b7280', fontSize: 11 }}>
-                {typeLabel}
-              </span>
+              <span style={{ color: '#10b981' }}>&quot;{obj}&quot;</span>
+              <ActionIcon value={obj} keyName={key} />
             </span>
           ),
-          children: children.length > 0 ? children : undefined,
-        }];
-      }
-      
-      // Regular string
-      return [{
-        key: path,
-        title: (
-          <span>
-            <PathTag path={path} />
-            <span style={{ fontWeight: 500 }}>{key}: </span>
-            <span style={{ color: '#10b981' }}>&quot;{obj}&quot;</span>
-            <ActionIcon value={obj} keyName={key} />
-          </span>
-        ),
-      }];
+        },
+      ];
     }
 
     if (typeof obj === 'number') {
-      return [{
-        key: path,
-        title: (
-          <span>
-            <PathTag path={path} />
-            <span style={{ fontWeight: 500 }}>{key}: </span>
-            <span style={{ color: '#3b82f6' }}>{obj}</span>
-            <ActionIcon value={obj} keyName={key} />
-          </span>
-        ),
-      }];
+      return [
+        {
+          key: path,
+          title: (
+            <span>
+              <PathTag path={path} />
+              <span style={{ fontWeight: 500 }}>{key}: </span>
+              <span style={{ color: '#3b82f6' }}>{obj}</span>
+              <ActionIcon value={obj} keyName={key} />
+            </span>
+          ),
+        },
+      ];
     }
 
     if (typeof obj === 'boolean') {
-      return [{
-        key: path,
-        title: (
-          <span>
-            <PathTag path={path} />
-            <span style={{ fontWeight: 500 }}>{key}: </span>
-            <span style={{ color: '#f59e0b' }}>{obj.toString()}</span>
-            <ActionIcon value={obj} keyName={key} />
-          </span>
-        ),
-      }];
+      return [
+        {
+          key: path,
+          title: (
+            <span>
+              <PathTag path={path} />
+              <span style={{ fontWeight: 500 }}>{key}: </span>
+              <span style={{ color: '#f59e0b' }}>{obj.toString()}</span>
+              <ActionIcon value={obj} keyName={key} />
+            </span>
+          ),
+        },
+      ];
     }
 
     if (Array.isArray(obj)) {
       if (obj.length === 0) {
-        return [{
+        return [
+          {
+            key: path,
+            title: (
+              <span>
+                <PathTag path={path} />
+                <span style={{ fontWeight: 500 }}>{key}: </span>
+                <span style={{ color: '#6b7280' }}>[]</span>
+              </span>
+            ),
+          },
+        ];
+      }
+
+      const children = obj.flatMap((item, index) =>
+        buildTreeData(item, `${path}[${index}]`, `[${index}]`)
+      );
+
+      return [
+        {
           key: path,
           title: (
             <span>
               <PathTag path={path} />
               <span style={{ fontWeight: 500 }}>{key}: </span>
-              <span style={{ color: '#6b7280' }}>[]</span>
+              <span style={{ color: '#6b7280' }}>Array({obj.length})</span>
             </span>
           ),
-        }];
-      }
-
-      const children = obj.flatMap((item, index) => 
-        buildTreeData(item, `${path}[${index}]`, `[${index}]`)
-      );
-
-      return [{
-        key: path,
-        title: (
-          <span>
-            <PathTag path={path} />
-            <span style={{ fontWeight: 500 }}>{key}: </span>
-            <span style={{ color: '#6b7280' }}>Array({obj.length})</span>
-          </span>
-        ),
-        children,
-      }];
+          children,
+        },
+      ];
     }
 
     if (typeof obj === 'object') {
       const entries = Object.entries(obj);
       if (entries.length === 0) {
-        return [{
+        return [
+          {
+            key: path,
+            title: (
+              <span>
+                <PathTag path={path} />
+                <span style={{ fontWeight: 500 }}>{key}: </span>
+                <span style={{ color: '#6b7280' }}>{'{}'}</span>
+              </span>
+            ),
+          },
+        ];
+      }
+
+      const children = entries.flatMap(([k, v]) => buildTreeData(v, `${path}.${k}`, k));
+
+      return [
+        {
           key: path,
           title: (
             <span>
               <PathTag path={path} />
               <span style={{ fontWeight: 500 }}>{key}: </span>
-              <span style={{ color: '#6b7280' }}>{'{}'}</span>
+              <span style={{ color: '#6b7280' }}>Object({entries.length})</span>
             </span>
           ),
-        }];
-      }
-
-      const children = entries.flatMap(([k, v]) => 
-        buildTreeData(v, `${path}.${k}`, k)
-      );
-
-      return [{
-        key: path,
-        title: (
-          <span>
-            <PathTag path={path} />
-            <span style={{ fontWeight: 500 }}>{key}: </span>
-            <span style={{ color: '#6b7280' }}>Object({entries.length})</span>
-          </span>
-        ),
-        children,
-      }];
+          children,
+        },
+      ];
     }
 
     return [];
@@ -464,18 +494,19 @@ export default function JsonTreeView({ content, isValidJson }: JsonTreeViewProps
     } catch {
       return [];
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [content, isValidJson]);
 
   return (
-    <div style={{ 
-      height: '100%', 
-      overflow: 'auto',
-      padding: '16px',
-      fontFamily: "'SF Mono', 'Fira Code', 'Consolas', monospace",
-      fontSize: 13
-    }}
-    className='select-none user-select-none cursor-pointer scroll-smooth'
+    <div
+      style={{
+        height: '100%',
+        overflow: 'auto',
+        padding: '16px',
+        fontFamily: "'SF Mono', 'Fira Code', 'Consolas', monospace",
+        fontSize: 13,
+      }}
+      className="user-select-none cursor-pointer scroll-smooth select-none"
     >
       {treeData.length > 0 ? (
         <Tree
@@ -487,11 +518,13 @@ export default function JsonTreeView({ content, isValidJson }: JsonTreeViewProps
           showIcon={false}
         />
       ) : (
-        <div style={{ 
-          textAlign: 'center', 
-          color: '#9ca3af',
-          paddingTop: 40 
-        }}>
+        <div
+          style={{
+            textAlign: 'center',
+            color: '#9ca3af',
+            paddingTop: 40,
+          }}
+        >
           Invalid JSON - cannot display tree view
         </div>
       )}

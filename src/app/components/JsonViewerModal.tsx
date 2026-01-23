@@ -89,7 +89,6 @@ export default function JsonViewerModal({
     message.success('Copied to clipboard');
   }, [content, message]);
 
-
   const formatTime = (date: Date): string => {
     return date.toLocaleTimeString('en-US', {
       hour12: false,
@@ -101,7 +100,14 @@ export default function JsonViewerModal({
   };
 
   const modalTitle = (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        width: '100%',
+      }}
+    >
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <span>{title || 'JSON Viewer'}</span>
         {eventName && (
@@ -110,7 +116,8 @@ export default function JsonViewerModal({
               fontSize: 12,
               fontWeight: 600,
               color: direction === 'out' ? '#f59e0b' : '#10b981',
-              background: direction === 'out' ? 'rgba(245, 158, 11, 0.1)' : 'rgba(16, 185, 129, 0.1)',
+              background:
+                direction === 'out' ? 'rgba(245, 158, 11, 0.1)' : 'rgba(16, 185, 129, 0.1)',
               padding: '2px 8px',
               borderRadius: 4,
             }}
@@ -144,8 +151,22 @@ export default function JsonViewerModal({
           value={viewMode}
           onChange={(v) => setViewMode(v as ViewMode)}
           options={[
-            { label: <><ApartmentOutlined /> Tree</>, value: 'tree' },
-            { label: <><CodeOutlined /> Editor</>, value: 'editor' },
+            {
+              label: (
+                <>
+                  <ApartmentOutlined /> Tree
+                </>
+              ),
+              value: 'tree',
+            },
+            {
+              label: (
+                <>
+                  <CodeOutlined /> Editor
+                </>
+              ),
+              value: 'editor',
+            },
           ]}
         />
       )}
@@ -212,10 +233,7 @@ export default function JsonViewerModal({
             onChange={setContent}
           />
         ) : (
-          <JsonTreeView
-            content={content}
-            isValidJson={isValidJson}
-          />
+          <JsonTreeView content={content} isValidJson={isValidJson} />
         )}
       </div>
     </Modal>

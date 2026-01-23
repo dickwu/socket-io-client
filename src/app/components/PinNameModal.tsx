@@ -62,11 +62,7 @@ export default function PinNameModal({
           rules={[{ required: false }]}
           extra="Leave as is to use the event name, or enter a custom name"
         >
-          <Input
-            placeholder="Enter custom name"
-            autoFocus
-            onPressEnter={handleOk}
-          />
+          <Input placeholder="Enter custom name" autoFocus onPressEnter={handleOk} />
         </Form.Item>
       </Form>
     </Modal>

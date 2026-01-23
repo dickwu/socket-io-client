@@ -176,3 +176,24 @@ export async function findDuplicatePinnedMessage(
 ): Promise<number | null> {
   return await invoke('find_duplicate_pinned_message', { connectionId, eventName, payload });
 }
+
+// Socket commands
+export async function socketConnect(connectionId: number): Promise<void> {
+  await invoke('socket_connect', { connectionId });
+}
+
+export async function socketDisconnect(): Promise<void> {
+  await invoke('socket_disconnect');
+}
+
+export async function socketEmit(eventName: string, payload: string): Promise<void> {
+  await invoke('socket_emit', { eventName, payload });
+}
+
+export async function socketAddListener(eventName: string): Promise<void> {
+  await invoke('socket_add_listener', { eventName });
+}
+
+export async function socketRemoveListener(eventName: string): Promise<void> {
+  await invoke('socket_remove_listener', { eventName });
+}

@@ -10,6 +10,7 @@ mod db;
 mod connection;
 mod emit_log;
 mod pinned;
+mod socket_client;
 
 const APP_NAME: &str = "Socket.IO Client";
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -44,6 +45,8 @@ pub fn run() {
             
             let db_path: PathBuf = app_data_dir.join("socket-io-client.db");
             db::init_db(&db_path).expect("Failed to initialize database");
+
+            app.manage(socket_client::SocketManager::new(app.handle().clone()));
 
             // Setup custom application menu (macOS menu bar)
             #[cfg(target_os = "macos")]
@@ -162,6 +165,12 @@ pub fn run() {
             pinned::reorder_pinned_messages,
             pinned::list_pinned_messages,
             pinned::find_duplicate_pinned_message,
+            // Socket commands
+            socket_client::socket_connect,
+            socket_client::socket_disconnect,
+            socket_client::socket_emit,
+            socket_client::socket_add_listener,
+            socket_client::socket_remove_listener,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

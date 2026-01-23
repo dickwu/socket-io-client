@@ -25,7 +25,12 @@ export default function PinnedList() {
 
   // Rename modal state
   const [renameModalOpen, setRenameModalOpen] = useState(false);
-  const [editingPin, setEditingPin] = useState<{ id: number; eventName: string; payload: string; currentLabel: string } | null>(null);
+  const [editingPin, setEditingPin] = useState<{
+    id: number;
+    eventName: string;
+    payload: string;
+    currentLabel: string;
+  } | null>(null);
 
   // Load pinned messages when connection changes
   useEffect(() => {
@@ -136,7 +141,14 @@ export default function PinnedList() {
                       type="text"
                       size="small"
                       icon={<EditOutlined />}
-                      onClick={() => handleEdit(pinned.id, pinned.eventName, pinned.payload, pinned.label || pinned.eventName)}
+                      onClick={() =>
+                        handleEdit(
+                          pinned.id,
+                          pinned.eventName,
+                          pinned.payload,
+                          pinned.label || pinned.eventName
+                        )
+                      }
                     />
                   </Tooltip>
                   <Tooltip title="Delete">

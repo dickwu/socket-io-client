@@ -17,12 +17,12 @@ interface JsonEditorViewProps {
   onChange: (value: string) => void;
 }
 
-export default function JsonEditorView({ 
-  content, 
-  isValidJson, 
-  wordWrap, 
+export default function JsonEditorView({
+  content,
+  isValidJson,
+  wordWrap,
   theme,
-  onChange 
+  onChange,
 }: JsonEditorViewProps) {
   return (
     <Editor
