@@ -13,6 +13,7 @@ import {
   CopyOutlined,
 } from '@ant-design/icons';
 import { useSocketStore, useFilteredEvents } from '@/app/stores/socketStore';
+import { analyzeJsonPayload } from '@/app/lib/jsonPayload';
 import JsonViewerModal from './JsonViewerModal';
 
 const COLLAPSE_THRESHOLD = 200; // Characters threshold for auto-collapse
@@ -29,32 +30,13 @@ function formatTime(date: Date): string {
   } as Intl.DateTimeFormatOptions);
 }
 
-function formatPayload(payload: string): string {
-  try {
-    const parsed = JSON.parse(payload);
-    return JSON.stringify(parsed, null, 2);
-  } catch {
-    return payload;
-  }
-}
-
-function isJsonParseable(payload: string): boolean {
-  try {
-    JSON.parse(payload);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 function truncateLine(line: string, maxLength: number): string {
   if (line.length <= maxLength) return line;
   return line.slice(0, maxLength) + '...';
 }
 
-function getPreviewPayload(payload: string, maxLines: number): string {
-  const formatted = formatPayload(payload);
-  const lines = formatted.split('\n');
+function getPreviewPayload(formattedPayload: string, maxLines: number): string {
+  const lines = formattedPayload.split('\n');
 
   // Truncate each line and limit total lines
   const previewLines = lines.slice(0, maxLines).map((line) => truncateLine(line, MAX_LINE_LENGTH));
@@ -83,14 +65,15 @@ interface EventItemProps {
 
 function EventItem({ event, onOpenViewer }: EventItemProps) {
   const { message } = App.useApp();
-  const formattedPayload = formatPayload(event.payload);
+  const payloadAnalysis = analyzeJsonPayload(event.payload);
+  const formattedPayload = payloadAnalysis.display;
   const lines = formattedPayload.split('\n');
   const lineCount = lines.length;
   const hasLongLines = lines.some((line) => line.length > MAX_LINE_LENGTH);
   const isLarge =
     formattedPayload.length > COLLAPSE_THRESHOLD || lineCount > MAX_PREVIEW_LINES || hasLongLines;
   const [expanded, setExpanded] = useState(false);
-  const isJson = isJsonParseable(event.payload);
+  const isJson = payloadAnalysis.isJson;
 
   const handleCopy = useCallback(
     (e: React.MouseEvent) => {
@@ -116,7 +99,7 @@ function EventItem({ event, onOpenViewer }: EventItemProps) {
 
   // Content to display
   const displayContent =
-    isLarge && !expanded ? getPreviewPayload(event.payload, MAX_PREVIEW_LINES) : formattedPayload;
+    isLarge && !expanded ? getPreviewPayload(formattedPayload, MAX_PREVIEW_LINES) : formattedPayload;
 
   return (
     <div className="event-item animate-slide-in">

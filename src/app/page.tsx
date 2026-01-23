@@ -12,15 +12,18 @@ import {
   MoonOutlined,
   SendOutlined,
   CloudSyncOutlined,
+  SettingOutlined,
 } from '@ant-design/icons';
 import { useTheme } from './providers';
 import { useSocketStore, useCurrentConnection } from './stores/socketStore';
+import { useMcpStore, useMcpStatusColor } from './stores/mcpStore';
 import {
   listConnections,
   getCurrentConnection,
   listConnectionEvents,
   listEmitLogs,
   listPinnedMessages,
+  getMcpStatus,
 } from './hooks/useTauri';
 import useSocket from './hooks/useSocket';
 import Sidebar from './components/Sidebar';
@@ -28,6 +31,7 @@ import EventTags from './components/EventTags';
 import EventList from './components/EventList';
 import ConnectionModal from './components/ConnectionModal';
 import SendMessageModal from './components/SendMessageModal';
+import McpModal from './components/McpModal';
 
 export default function Home() {
   const { message, modal } = App.useApp();
@@ -47,6 +51,13 @@ export default function Home() {
   const setEmitLogs = useSocketStore((state) => state.setEmitLogs);
   const setPinnedMessages = useSocketStore((state) => state.setPinnedMessages);
   const errorMessage = useSocketStore((state) => state.errorMessage);
+
+  // MCP state
+  const mcpStatus = useMcpStore((state) => state.status);
+  const setMcpStatus = useMcpStore((state) => state.setStatus);
+  const setMcpPort = useMcpStore((state) => state.setPort);
+  const openMcpModal = useMcpStore((state) => state.openModal);
+  const mcpStatusColor = useMcpStatusColor();
 
   // Send modal state
   const isSendModalOpen = useSocketStore((state) => state.isSendModalOpen);
@@ -78,6 +89,16 @@ export default function Home() {
       // Running in browser mode
     }
   }, []);
+
+  const loadMcpStatus = useCallback(async () => {
+    try {
+      const status = await getMcpStatus();
+      setMcpStatus(status.status);
+      setMcpPort(status.port ?? null);
+    } catch {
+      // Running in browser mode
+    }
+  }, [setMcpPort, setMcpStatus]);
 
   const checkForUpdate = useCallback(async () => {
     setCheckingUpdate(true);
@@ -129,7 +150,8 @@ export default function Home() {
   useEffect(() => {
     initializeApp();
     loadVersion();
-  }, [initializeApp, loadVersion]);
+    loadMcpStatus();
+  }, [initializeApp, loadMcpStatus, loadVersion]);
 
   useEffect(() => {
     if (currentConnection) {
@@ -226,6 +248,25 @@ export default function Home() {
             >
               Send
             </Button>
+            <Tooltip title="MCP Server Settings">
+              <Button
+                type="text"
+                icon={<SettingOutlined />}
+                onClick={openMcpModal}
+                style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+              >
+                <div
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    backgroundColor: mcpStatusColor,
+                    boxShadow: mcpStatus === 'running' ? `0 0 6px ${mcpStatusColor}` : 'none',
+                  }}
+                />
+                <span style={{ fontSize: 12 }}>MCP</span>
+              </Button>
+            </Tooltip>
             <Tooltip title={theme === 'dark' ? 'Light mode' : 'Dark mode'}>
               <Button
                 type="text"
@@ -279,6 +320,9 @@ export default function Home() {
         initialEventName={sendModalEventName}
         initialPayload={sendModalPayload}
       />
+
+      {/* MCP Modal */}
+      <McpModal />
     </div>
   );
 }

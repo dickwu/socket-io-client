@@ -6,9 +6,10 @@ use tauri::{
 };
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 
-mod db;
 mod connection;
+mod db;
 mod emit_log;
+mod mcp_server;
 mod pinned;
 mod socket_client;
 
@@ -23,7 +24,7 @@ fn show_about_dialog<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
         "{}\n\nVersion: {}\nLicense: {}\n{}",
         APP_DESCRIPTION, APP_VERSION, APP_LICENSE, APP_COPYRIGHT
     );
-    
+
     app.dialog()
         .message(&about_message)
         .title(APP_NAME)
@@ -40,32 +41,51 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             // Initialize database in app data directory
-            let app_data_dir = app.path().app_data_dir().expect("Failed to get app data dir");
-            std::fs::create_dir_all(&app_data_dir).expect("Failed to create app data dir");
-            
+            let app_data_dir = app
+                .path()
+                .app_data_dir()
+                .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+            std::fs::create_dir_all(&app_data_dir)
+                .map_err(|e| format!("Failed to create app data dir: {}", e))?;
+
             let db_path: PathBuf = app_data_dir.join("socket-io-client.db");
-            db::init_db(&db_path).expect("Failed to initialize database");
+            db::init_db(&db_path).map_err(|e| format!("Failed to initialize database: {}", e))?;
 
             app.manage(socket_client::SocketManager::new(app.handle().clone()));
+            app.manage(mcp_server::McpServerState::new());
 
             // Setup custom application menu (macOS menu bar)
             #[cfg(target_os = "macos")]
             {
-                let app_menu_about = MenuItem::with_id(app, "app_about", "About Socket.IO Client", true, None::<&str>)?;
+                let app_menu_about = MenuItem::with_id(
+                    app,
+                    "app_about",
+                    "About Socket.IO Client",
+                    true,
+                    None::<&str>,
+                )?;
                 let separator = PredefinedMenuItem::separator(app)?;
                 let hide = PredefinedMenuItem::hide(app, Some("Hide"))?;
                 let hide_others = PredefinedMenuItem::hide_others(app, Some("Hide Others"))?;
                 let show_all = PredefinedMenuItem::show_all(app, Some("Show All"))?;
                 let separator2 = PredefinedMenuItem::separator(app)?;
                 let quit = PredefinedMenuItem::quit(app, Some("Quit"))?;
-                
+
                 let app_submenu = Submenu::with_items(
                     app,
                     "Socket.IO Client",
                     true,
-                    &[&app_menu_about, &separator, &hide, &hide_others, &show_all, &separator2, &quit],
+                    &[
+                        &app_menu_about,
+                        &separator,
+                        &hide,
+                        &hide_others,
+                        &show_all,
+                        &separator2,
+                        &quit,
+                    ],
                 )?;
-                
+
                 let edit_menu = Submenu::with_items(
                     app,
                     "Edit",
@@ -80,7 +100,7 @@ pub fn run() {
                         &PredefinedMenuItem::select_all(app, Some("Select All"))?,
                     ],
                 )?;
-                
+
                 let window_menu = Submenu::with_items(
                     app,
                     "Window",
@@ -92,10 +112,10 @@ pub fn run() {
                         &PredefinedMenuItem::close_window(app, Some("Close"))?,
                     ],
                 )?;
-                
+
                 let app_menu = Menu::with_items(app, &[&app_submenu, &edit_menu, &window_menu])?;
                 app.set_menu(app_menu)?;
-                
+
                 app.on_menu_event(|app, event| {
                     if event.id.as_ref() == "app_about" {
                         show_about_dialog(app);
@@ -112,16 +132,14 @@ pub fn run() {
                 .icon(app.default_window_icon().unwrap().clone())
                 .menu(&tray_menu)
                 .show_menu_on_left_click(false)
-                .on_menu_event(|app, event| {
-                    match event.id.as_ref() {
-                        "about" => {
-                            show_about_dialog(app);
-                        }
-                        "quit" => {
-                            app.exit(0);
-                        }
-                        _ => {}
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "about" => {
+                        show_about_dialog(app);
                     }
+                    "quit" => {
+                        app.exit(0);
+                    }
+                    _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
                     if let TrayIconEvent::Click {
@@ -138,7 +156,7 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
-            
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -171,6 +189,12 @@ pub fn run() {
             socket_client::socket_emit,
             socket_client::socket_add_listener,
             socket_client::socket_remove_listener,
+            // MCP server commands
+            mcp_server::start_mcp_server,
+            mcp_server::stop_mcp_server,
+            mcp_server::get_mcp_status,
+            mcp_server::check_claude_cli,
+            mcp_server::run_claude_mcp_add,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

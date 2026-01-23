@@ -97,9 +97,10 @@ export function useSocket() {
 
       if (isTauriAvailable) {
         void socketEmit(eventName, payloadString).catch((error) => {
+          // Emit errors should NOT change connection status - the socket may still be connected
+          // even if a single message fails to send. Log for debugging purposes.
           const msg = error instanceof Error ? error.message : 'Failed to emit event';
-          useSocketStore.getState().setConnectionStatus('error');
-          useSocketStore.getState().setErrorMessage(msg);
+          console.error('Socket emit error:', msg);
         });
       }
 

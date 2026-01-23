@@ -197,3 +197,49 @@ export async function socketAddListener(eventName: string): Promise<void> {
 export async function socketRemoveListener(eventName: string): Promise<void> {
   await invoke('socket_remove_listener', { eventName });
 }
+
+export interface McpStatus {
+  status: 'stopped' | 'running' | 'error';
+  port?: number | null;
+  message?: string | null;
+}
+
+// MCP server commands
+export async function startMcpServer(port: number): Promise<McpStatus> {
+  return await invoke('start_mcp_server', { port });
+}
+
+export async function stopMcpServer(): Promise<McpStatus> {
+  return await invoke('stop_mcp_server');
+}
+
+export async function getMcpStatus(): Promise<McpStatus> {
+  return await invoke('get_mcp_status');
+}
+
+// Shell command output
+export interface ShellOutput {
+  code: number | null;
+  stdout: string;
+  stderr: string;
+}
+
+export interface ClaudeCheckResult {
+  installed: boolean;
+  version: string | null;
+  path: string | null;
+}
+
+/**
+ * Check if Claude CLI is installed and get its version
+ */
+export async function checkClaudeCli(): Promise<ClaudeCheckResult> {
+  return await invoke('check_claude_cli');
+}
+
+/**
+ * Run the Claude MCP add command to register the socket-io-client MCP server
+ */
+export async function runClaudeMcpAdd(port: number): Promise<ShellOutput> {
+  return await invoke('run_claude_mcp_add', { port });
+}

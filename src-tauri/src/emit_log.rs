@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use crate::db;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmitLog {
@@ -10,7 +10,11 @@ pub struct EmitLog {
 }
 
 #[tauri::command]
-pub fn add_emit_log(connection_id: i64, event_name: String, payload: String) -> Result<i64, String> {
+pub fn add_emit_log(
+    connection_id: i64,
+    event_name: String,
+    payload: String,
+) -> Result<i64, String> {
     db::add_emit_log(connection_id, &event_name, &payload).map_err(|e| e.to_string())
 }
 
@@ -18,15 +22,16 @@ pub fn add_emit_log(connection_id: i64, event_name: String, payload: String) -> 
 pub fn list_emit_logs(connection_id: i64, limit: Option<i64>) -> Result<Vec<EmitLog>, String> {
     let limit = limit.unwrap_or(100);
     let rows = db::list_emit_logs(connection_id, limit).map_err(|e| e.to_string())?;
-    
-    Ok(rows.into_iter().map(|(id, event_name, payload, sent_at)| {
-        EmitLog {
+
+    Ok(rows
+        .into_iter()
+        .map(|(id, event_name, payload, sent_at)| EmitLog {
             id,
             event_name,
             payload,
             sent_at,
-        }
-    }).collect())
+        })
+        .collect())
 }
 
 #[tauri::command]

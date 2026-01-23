@@ -13,6 +13,7 @@ interface SocketEventPayload {
   eventName: string;
   payload: string;
   timestamp?: string;
+  direction?: 'in' | 'out';
 }
 
 interface SocketErrorPayload {
@@ -43,14 +44,14 @@ export async function initSocketListeners(): Promise<void> {
       }
     });
 
-    // Listen for socket events
+    // Listen for socket events (both incoming and outgoing)
     await listen<SocketEventPayload>('socket:event', ({ payload }) => {
       addReceivedEvent({
         id: crypto.randomUUID(),
         eventName: payload.eventName,
         payload: payload.payload ?? '',
         timestamp: payload.timestamp ? new Date(payload.timestamp) : new Date(),
-        direction: 'in',
+        direction: payload.direction ?? 'in',
       });
     });
 

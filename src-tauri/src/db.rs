@@ -1,20 +1,30 @@
-use lazy_static::lazy_static;
 use rusqlite::{Connection, Result, params};
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 
-lazy_static! {
-    static ref DB_PATH: Mutex<Option<PathBuf>> = Mutex::new(None);
-}
+static DB_PATH: OnceLock<Mutex<PathBuf>> = OnceLock::new();
+
+// Type aliases to reduce complexity warnings
+/// (id, name, url, namespace, auth_token, options, created_at, updated_at)
+pub type ConnectionRow = (
+    i64,
+    String,
+    String,
+    String,
+    Option<String>,
+    String,
+    String,
+    String,
+);
+/// (id, event_name, payload, label, sort_order)
+pub type PinnedMessageRow = (i64, String, String, Option<String>, i64);
 
 pub fn init_db(path: &PathBuf) -> Result<()> {
-    {
-        let mut db_path = DB_PATH.lock().unwrap();
-        *db_path = Some(path.clone());
-    }
-    
+    // Initialize DB_PATH with OnceLock - this can only be set once
+    let _ = DB_PATH.get_or_init(|| Mutex::new(path.clone()));
+
     let conn = get_connection()?;
-    
+
     // Create connections table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS connections (
@@ -29,7 +39,7 @@ pub fn init_db(path: &PathBuf) -> Result<()> {
         )",
         [],
     )?;
-    
+
     // Create connection_events table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS connection_events (
@@ -42,7 +52,7 @@ pub fn init_db(path: &PathBuf) -> Result<()> {
         )",
         [],
     )?;
-    
+
     // Create emit_logs table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS emit_logs (
@@ -55,7 +65,7 @@ pub fn init_db(path: &PathBuf) -> Result<()> {
         )",
         [],
     )?;
-    
+
     // Create pinned_messages table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS pinned_messages (
@@ -70,7 +80,7 @@ pub fn init_db(path: &PathBuf) -> Result<()> {
         )",
         [],
     )?;
-    
+
     // Create app_state table for persisting current selection
     conn.execute(
         "CREATE TABLE IF NOT EXISTS app_state (
@@ -79,19 +89,29 @@ pub fn init_db(path: &PathBuf) -> Result<()> {
         )",
         [],
     )?;
-    
+
     log::info!("Database initialized at {:?}", path);
     Ok(())
 }
 
 pub fn get_connection() -> Result<Connection> {
-    let db_path = DB_PATH.lock().unwrap();
-    let path = db_path.as_ref().expect("Database not initialized");
-    Connection::open(path)
+    let db_path_mutex = DB_PATH
+        .get()
+        .ok_or_else(|| rusqlite::Error::InvalidParameterName("Database not initialized".into()))?;
+    let path = db_path_mutex
+        .lock()
+        .map_err(|_| rusqlite::Error::InvalidParameterName("Database lock poisoned".into()))?;
+    Connection::open(&*path)
 }
 
 // Connection operations
-pub fn create_connection(name: &str, url: &str, namespace: &str, auth_token: Option<&str>, options: &str) -> Result<i64> {
+pub fn create_connection(
+    name: &str,
+    url: &str,
+    namespace: &str,
+    auth_token: Option<&str>,
+    options: &str,
+) -> Result<i64> {
     let conn = get_connection()?;
     conn.execute(
         "INSERT INTO connections (name, url, namespace, auth_token, options) VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -100,7 +120,14 @@ pub fn create_connection(name: &str, url: &str, namespace: &str, auth_token: Opt
     Ok(conn.last_insert_rowid())
 }
 
-pub fn update_connection(id: i64, name: &str, url: &str, namespace: &str, auth_token: Option<&str>, options: &str) -> Result<()> {
+pub fn update_connection(
+    id: i64,
+    name: &str,
+    url: &str,
+    namespace: &str,
+    auth_token: Option<&str>,
+    options: &str,
+) -> Result<()> {
     let conn = get_connection()?;
     conn.execute(
         "UPDATE connections SET name = ?1, url = ?2, namespace = ?3, auth_token = ?4, options = ?5, updated_at = CURRENT_TIMESTAMP WHERE id = ?6",
@@ -115,12 +142,12 @@ pub fn delete_connection(id: i64) -> Result<()> {
     Ok(())
 }
 
-pub fn list_connections() -> Result<Vec<(i64, String, String, String, Option<String>, String, String, String)>> {
+pub fn list_connections() -> Result<Vec<ConnectionRow>> {
     let conn = get_connection()?;
     let mut stmt = conn.prepare(
         "SELECT id, name, url, namespace, auth_token, options, created_at, updated_at FROM connections ORDER BY updated_at DESC"
     )?;
-    
+
     let rows = stmt.query_map([], |row| {
         Ok((
             row.get(0)?,
@@ -133,7 +160,7 @@ pub fn list_connections() -> Result<Vec<(i64, String, String, String, Option<Str
             row.get(7)?,
         ))
     })?;
-    
+
     let mut results = Vec::new();
     for row in rows {
         results.push(row?);
@@ -141,12 +168,12 @@ pub fn list_connections() -> Result<Vec<(i64, String, String, String, Option<Str
     Ok(results)
 }
 
-pub fn get_connection_by_id(id: i64) -> Result<Option<(i64, String, String, String, Option<String>, String)>> {
+pub fn get_connection_by_id(id: i64) -> Result<Option<ConnectionRow>> {
     let conn = get_connection()?;
     let mut stmt = conn.prepare(
-        "SELECT id, name, url, namespace, auth_token, options FROM connections WHERE id = ?1"
+        "SELECT id, name, url, namespace, auth_token, options, created_at, updated_at FROM connections WHERE id = ?1"
     )?;
-    
+
     let mut rows = stmt.query(params![id])?;
     if let Some(row) = rows.next()? {
         Ok(Some((
@@ -156,6 +183,8 @@ pub fn get_connection_by_id(id: i64) -> Result<Option<(i64, String, String, Stri
             row.get(3)?,
             row.get(4)?,
             row.get(5)?,
+            row.get(6)?,
+            row.get(7)?,
         )))
     } else {
         Ok(None)
@@ -192,11 +221,11 @@ pub fn list_connection_events(connection_id: i64) -> Result<Vec<(i64, String, bo
     let mut stmt = conn.prepare(
         "SELECT id, event_name, is_listening FROM connection_events WHERE connection_id = ?1 ORDER BY created_at"
     )?;
-    
+
     let rows = stmt.query_map(params![connection_id], |row| {
         Ok((row.get(0)?, row.get(1)?, row.get::<_, i32>(2)? != 0))
     })?;
-    
+
     let mut results = Vec::new();
     for row in rows {
         results.push(row?);
@@ -214,16 +243,19 @@ pub fn add_emit_log(connection_id: i64, event_name: &str, payload: &str) -> Resu
     Ok(conn.last_insert_rowid())
 }
 
-pub fn list_emit_logs(connection_id: i64, limit: i64) -> Result<Vec<(i64, String, String, String)>> {
+pub fn list_emit_logs(
+    connection_id: i64,
+    limit: i64,
+) -> Result<Vec<(i64, String, String, String)>> {
     let conn = get_connection()?;
     let mut stmt = conn.prepare(
         "SELECT id, event_name, payload, sent_at FROM emit_logs WHERE connection_id = ?1 ORDER BY sent_at DESC LIMIT ?2"
     )?;
-    
+
     let rows = stmt.query_map(params![connection_id, limit], |row| {
         Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
     })?;
-    
+
     let mut results = Vec::new();
     for row in rows {
         results.push(row?);
@@ -233,21 +265,31 @@ pub fn list_emit_logs(connection_id: i64, limit: i64) -> Result<Vec<(i64, String
 
 pub fn clear_emit_logs(connection_id: i64) -> Result<()> {
     let conn = get_connection()?;
-    conn.execute("DELETE FROM emit_logs WHERE connection_id = ?1", params![connection_id])?;
+    conn.execute(
+        "DELETE FROM emit_logs WHERE connection_id = ?1",
+        params![connection_id],
+    )?;
     Ok(())
 }
 
 // Pinned messages operations
-pub fn add_pinned_message(connection_id: i64, event_name: &str, payload: &str, label: Option<&str>) -> Result<i64> {
+pub fn add_pinned_message(
+    connection_id: i64,
+    event_name: &str,
+    payload: &str,
+    label: Option<&str>,
+) -> Result<i64> {
     let conn = get_connection()?;
-    
+
     // Get max sort_order
-    let max_order: i64 = conn.query_row(
-        "SELECT COALESCE(MAX(sort_order), 0) FROM pinned_messages WHERE connection_id = ?1",
-        params![connection_id],
-        |row| row.get(0),
-    ).unwrap_or(0);
-    
+    let max_order: i64 = conn
+        .query_row(
+            "SELECT COALESCE(MAX(sort_order), 0) FROM pinned_messages WHERE connection_id = ?1",
+            params![connection_id],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+
     conn.execute(
         "INSERT INTO pinned_messages (connection_id, event_name, payload, label, sort_order) VALUES (?1, ?2, ?3, ?4, ?5)",
         params![connection_id, event_name, payload, label, max_order + 1],
@@ -255,7 +297,12 @@ pub fn add_pinned_message(connection_id: i64, event_name: &str, payload: &str, l
     Ok(conn.last_insert_rowid())
 }
 
-pub fn update_pinned_message(id: i64, event_name: &str, payload: &str, label: Option<&str>) -> Result<()> {
+pub fn update_pinned_message(
+    id: i64,
+    event_name: &str,
+    payload: &str,
+    label: Option<&str>,
+) -> Result<()> {
     let conn = get_connection()?;
     conn.execute(
         "UPDATE pinned_messages SET event_name = ?1, payload = ?2, label = ?3 WHERE id = ?4",
@@ -271,26 +318,33 @@ pub fn delete_pinned_message(id: i64) -> Result<()> {
 }
 
 pub fn reorder_pinned_messages(ids: &[i64]) -> Result<()> {
-    let conn = get_connection()?;
+    let mut conn = get_connection()?;
+    let tx = conn.transaction()?;
     for (index, id) in ids.iter().enumerate() {
-        conn.execute(
+        tx.execute(
             "UPDATE pinned_messages SET sort_order = ?1 WHERE id = ?2",
             params![index as i64, id],
         )?;
     }
-    Ok(())
+    tx.commit()
 }
 
-pub fn list_pinned_messages(connection_id: i64) -> Result<Vec<(i64, String, String, Option<String>, i64)>> {
+pub fn list_pinned_messages(connection_id: i64) -> Result<Vec<PinnedMessageRow>> {
     let conn = get_connection()?;
     let mut stmt = conn.prepare(
         "SELECT id, event_name, payload, label, sort_order FROM pinned_messages WHERE connection_id = ?1 ORDER BY sort_order"
     )?;
-    
+
     let rows = stmt.query_map(params![connection_id], |row| {
-        Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?))
+        Ok((
+            row.get(0)?,
+            row.get(1)?,
+            row.get(2)?,
+            row.get(3)?,
+            row.get(4)?,
+        ))
     })?;
-    
+
     let mut results = Vec::new();
     for row in rows {
         results.push(row?);
@@ -298,12 +352,16 @@ pub fn list_pinned_messages(connection_id: i64) -> Result<Vec<(i64, String, Stri
     Ok(results)
 }
 
-pub fn find_duplicate_pinned_message(connection_id: i64, event_name: &str, payload: &str) -> Result<Option<i64>> {
+pub fn find_duplicate_pinned_message(
+    connection_id: i64,
+    event_name: &str,
+    payload: &str,
+) -> Result<Option<i64>> {
     let conn = get_connection()?;
     let mut stmt = conn.prepare(
         "SELECT id FROM pinned_messages WHERE connection_id = ?1 AND event_name = ?2 AND payload = ?3 LIMIT 1"
     )?;
-    
+
     let mut rows = stmt.query(params![connection_id, event_name, payload])?;
     if let Some(row) = rows.next()? {
         Ok(Some(row.get(0)?))
@@ -326,7 +384,7 @@ pub fn get_app_state(key: &str) -> Result<Option<String>> {
     let conn = get_connection()?;
     let mut stmt = conn.prepare("SELECT value FROM app_state WHERE key = ?1")?;
     let mut rows = stmt.query(params![key])?;
-    
+
     if let Some(row) = rows.next()? {
         Ok(Some(row.get(0)?))
     } else {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { Modal, Button, Tooltip, App, Space, Segmented } from 'antd';
 import {
   CopyOutlined,
@@ -13,6 +13,7 @@ import {
 } from '@ant-design/icons';
 import JsonEditorView from './JsonEditorView';
 import JsonTreeView from './JsonTreeView';
+import { analyzeJsonPayload } from '@/app/lib/jsonPayload';
 
 interface JsonViewerModalProps {
   open: boolean;
@@ -41,20 +42,20 @@ export default function JsonViewerModal({
   const [theme, setTheme] = useState<'vs-dark' | 'light'>('vs-dark');
   const [viewMode, setViewMode] = useState<ViewMode>('tree');
 
-  // Check if payload is valid JSON
-  const isValidJson = (() => {
-    try {
-      JSON.parse(payload);
-      return true;
-    } catch {
-      return false;
-    }
-  })();
+  const payloadAnalysis = useMemo(() => analyzeJsonPayload(payload), [payload]);
+  const isValidJson = payloadAnalysis.isJson;
+  const normalizedContent =
+    payloadAnalysis.kind === 'json-string' && payloadAnalysis.jsonText
+      ? payloadAnalysis.jsonText
+      : isValidJson
+        ? payload
+        : payloadAnalysis.display;
+  const effectiveViewMode: ViewMode = isValidJson ? viewMode : 'editor';
 
   // Reset content when payload changes
   useEffect(() => {
-    setContent(payload);
-  }, [payload]);
+    setContent(normalizedContent);
+  }, [normalizedContent]);
 
   // Detect system theme
   useEffect(() => {
@@ -186,7 +187,7 @@ export default function JsonViewerModal({
       footer={
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Space>
-            {viewMode === 'editor' && (
+            {effectiveViewMode === 'editor' && (
               <Segmented
                 size="small"
                 value={wordWrap}
@@ -199,7 +200,7 @@ export default function JsonViewerModal({
             )}
           </Space>
           <Space>
-            {isValidJson && viewMode === 'editor' && (
+            {isValidJson && effectiveViewMode === 'editor' && (
               <>
                 <Tooltip title="Format JSON">
                   <Button size="small" icon={<FormatPainterOutlined />} onClick={handleFormat}>
@@ -224,7 +225,7 @@ export default function JsonViewerModal({
       }
     >
       <div style={{ height: '80vh', borderTop: '1px solid var(--border-color, #e5e7eb)' }}>
-        {viewMode === 'editor' ? (
+        {effectiveViewMode === 'editor' ? (
           <JsonEditorView
             content={content}
             isValidJson={isValidJson}

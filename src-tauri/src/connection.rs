@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use crate::db;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Connection {
@@ -43,18 +43,31 @@ pub struct UpdateConnectionInput {
 pub fn create_connection(input: CreateConnectionInput) -> Result<i64, String> {
     let namespace = input.namespace.unwrap_or_else(|| "/".to_string());
     let options = input.options.unwrap_or_else(|| "{}".to_string());
-    
-    db::create_connection(&input.name, &input.url, &namespace, input.auth_token.as_deref(), &options)
-        .map_err(|e| e.to_string())
+
+    db::create_connection(
+        &input.name,
+        &input.url,
+        &namespace,
+        input.auth_token.as_deref(),
+        &options,
+    )
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn update_connection(input: UpdateConnectionInput) -> Result<(), String> {
     let namespace = input.namespace.unwrap_or_else(|| "/".to_string());
     let options = input.options.unwrap_or_else(|| "{}".to_string());
-    
-    db::update_connection(input.id, &input.name, &input.url, &namespace, input.auth_token.as_deref(), &options)
-        .map_err(|e| e.to_string())
+
+    db::update_connection(
+        input.id,
+        &input.name,
+        &input.url,
+        &namespace,
+        input.auth_token.as_deref(),
+        &options,
+    )
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -65,9 +78,30 @@ pub fn delete_connection(id: i64) -> Result<(), String> {
 #[tauri::command]
 pub fn list_connections() -> Result<Vec<Connection>, String> {
     let rows = db::list_connections().map_err(|e| e.to_string())?;
-    
-    Ok(rows.into_iter().map(|(id, name, url, namespace, auth_token, options, created_at, updated_at)| {
-        Connection {
+
+    Ok(rows
+        .into_iter()
+        .map(
+            |(id, name, url, namespace, auth_token, options, created_at, updated_at)| Connection {
+                id,
+                name,
+                url,
+                namespace,
+                auth_token,
+                options,
+                created_at,
+                updated_at,
+            },
+        )
+        .collect())
+}
+
+#[tauri::command]
+pub fn get_connection(id: i64) -> Result<Option<Connection>, String> {
+    let row = db::get_connection_by_id(id).map_err(|e| e.to_string())?;
+
+    Ok(row.map(
+        |(id, name, url, namespace, auth_token, options, created_at, updated_at)| Connection {
             id,
             name,
             url,
@@ -76,26 +110,8 @@ pub fn list_connections() -> Result<Vec<Connection>, String> {
             options,
             created_at,
             updated_at,
-        }
-    }).collect())
-}
-
-#[tauri::command]
-pub fn get_connection(id: i64) -> Result<Option<Connection>, String> {
-    let row = db::get_connection_by_id(id).map_err(|e| e.to_string())?;
-    
-    Ok(row.map(|(id, name, url, namespace, auth_token, options)| {
-        Connection {
-            id,
-            name,
-            url,
-            namespace,
-            auth_token,
-            options,
-            created_at: String::new(),
-            updated_at: String::new(),
-        }
-    }))
+        },
+    ))
 }
 
 // Connection events commands
@@ -117,14 +133,15 @@ pub fn toggle_connection_event(id: i64, is_listening: bool) -> Result<(), String
 #[tauri::command]
 pub fn list_connection_events(connection_id: i64) -> Result<Vec<ConnectionEvent>, String> {
     let rows = db::list_connection_events(connection_id).map_err(|e| e.to_string())?;
-    
-    Ok(rows.into_iter().map(|(id, event_name, is_listening)| {
-        ConnectionEvent {
+
+    Ok(rows
+        .into_iter()
+        .map(|(id, event_name, is_listening)| ConnectionEvent {
             id,
             event_name,
             is_listening,
-        }
-    }).collect())
+        })
+        .collect())
 }
 
 // App state commands
