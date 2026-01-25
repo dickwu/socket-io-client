@@ -19,7 +19,7 @@ export default function PinnedList() {
   const togglePinnedList = useSocketStore((state) => state.togglePinnedList);
   const pinnedMessages = useSocketStore((state) => state.pinnedMessages);
   const setPinnedMessages = useSocketStore((state) => state.setPinnedMessages);
-  const openSendModal = useSocketStore((state) => state.openSendModal);
+  const openComposeModal = useSocketStore((state) => state.openComposeModal);
 
   const currentConnection = useCurrentConnection();
 
@@ -53,8 +53,8 @@ export default function PinnedList() {
   }
 
   function handleSend(eventName: string, payload: string) {
-    // Open send modal with pre-filled data
-    openSendModal(eventName, payload);
+    // Open compose modal with pre-filled data
+    openComposeModal(eventName, payload);
   }
 
   function handleEdit(id: number, eventName: string, payload: string, currentLabel: string) {

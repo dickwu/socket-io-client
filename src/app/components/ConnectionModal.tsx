@@ -30,12 +30,16 @@ export default function ConnectionModal() {
   const [loading, setLoading] = useState(false);
   const [events, setEvents] = useState<ConnectionEvent[]>([]);
   const [newEventName, setNewEventName] = useState('');
+  const [autoSendOnConnect, setAutoSendOnConnect] = useState(false);
+  const [autoSendOnReconnect, setAutoSendOnReconnect] = useState(false);
 
   const isOpen = useSocketStore((state) => state.isSettingsModalOpen);
   const editingConnection = useSocketStore((state) => state.editingConnection);
   const closeSettingsModal = useSocketStore((state) => state.closeSettingsModal);
   const setConnections = useSocketStore((state) => state.setConnections);
   const setConnectionEvents = useSocketStore((state) => state.setConnectionEvents);
+  const setAutoSendSettings = useSocketStore((state) => state.setAutoSendSettings);
+  const getAutoSendSettings = useSocketStore((state) => state.getAutoSendSettings);
 
   const isEditing = !!editingConnection;
 
@@ -58,11 +62,17 @@ export default function ConnectionModal() {
 
       // Load events
       loadEvents(editingConnection.id);
+
+      const settings = getAutoSendSettings(editingConnection.id);
+      setAutoSendOnConnect(settings.onConnect);
+      setAutoSendOnReconnect(settings.onReconnect);
     } else {
       form.resetFields();
       setEvents([]);
+      setAutoSendOnConnect(false);
+      setAutoSendOnReconnect(false);
     }
-  }, [isOpen, editingConnection, form]);
+  }, [isOpen, editingConnection, form, getAutoSendSettings]);
 
   async function loadEvents(connectionId: number) {
     try {
@@ -277,6 +287,50 @@ export default function ConnectionModal() {
                     No event listeners configured
                   </span>
                 )}
+              </div>
+            </div>
+
+            <Divider />
+
+            <div className="modal-section">
+              <div className="modal-section-title">Auto Send</div>
+              <p style={{ color: '#9ca3af', fontSize: 12, marginBottom: 12 }}>
+                Automatically send pinned messages marked for auto-send when this connection goes
+                online.
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Switch
+                    size="small"
+                    checked={autoSendOnConnect}
+                    onChange={(checked) => {
+                      setAutoSendOnConnect(checked);
+                      if (editingConnection) {
+                        setAutoSendSettings(editingConnection.id, {
+                          onConnect: checked,
+                          onReconnect: autoSendOnReconnect,
+                        });
+                      }
+                    }}
+                  />
+                  <span style={{ fontSize: 13 }}>Auto-send on connect</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Switch
+                    size="small"
+                    checked={autoSendOnReconnect}
+                    onChange={(checked) => {
+                      setAutoSendOnReconnect(checked);
+                      if (editingConnection) {
+                        setAutoSendSettings(editingConnection.id, {
+                          onConnect: autoSendOnConnect,
+                          onReconnect: checked,
+                        });
+                      }
+                    }}
+                  />
+                  <span style={{ fontSize: 13 }}>Auto-send on reconnect</span>
+                </div>
               </div>
             </div>
           </>

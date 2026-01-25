@@ -31,6 +31,12 @@ export interface PinnedMessage {
   payload: string;
   label: string | null;
   sortOrder: number;
+  autoSend?: boolean;
+}
+
+export interface AutoSendSettings {
+  onConnect: boolean;
+  onReconnect: boolean;
 }
 
 export interface ReceivedEvent {
@@ -61,6 +67,9 @@ interface SocketStore {
   // Pinned messages
   pinnedMessages: PinnedMessage[];
 
+  // Auto-send settings per connection
+  autoSendSettings: Record<number, AutoSendSettings>;
+
   // UI state
   isSettingsModalOpen: boolean;
   editingConnection: Connection | null;
@@ -69,6 +78,11 @@ interface SocketStore {
   isSendModalOpen: boolean;
   sendModalEventName: string;
   sendModalPayload: string;
+
+  // Compose message modal state
+  isComposeModalOpen: boolean;
+  composeModalEventName: string;
+  composeModalPayload: string;
 
   // Panel visibility
   showEmitLog: boolean;
@@ -94,17 +108,45 @@ interface SocketStore {
   // Actions - Pinned messages
   setPinnedMessages: (messages: PinnedMessage[]) => void;
 
+  // Actions - Auto-send settings
+  setAutoSendSettings: (connectionId: number, settings: AutoSendSettings) => void;
+  getAutoSendSettings: (connectionId: number) => AutoSendSettings;
+
   // Actions - UI
   openSettingsModal: (connection?: Connection) => void;
   closeSettingsModal: () => void;
   openSendModal: (eventName?: string, payload?: string) => void;
   closeSendModal: () => void;
+  openComposeModal: (eventName?: string, payload?: string) => void;
+  closeComposeModal: () => void;
   toggleEmitLog: () => void;
   togglePinnedList: () => void;
   toggleSidebar: () => void;
 }
 
-export const useSocketStore = create<SocketStore>((set) => ({
+const AUTO_SEND_STORAGE_KEY = 'socket-io-client:auto-send-settings';
+
+function loadAutoSendSettings(): Record<number, AutoSendSettings> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(AUTO_SEND_STORAGE_KEY);
+    if (!raw) return {};
+    return JSON.parse(raw) as Record<number, AutoSendSettings>;
+  } catch {
+    return {};
+  }
+}
+
+function persistAutoSendSettings(settings: Record<number, AutoSendSettings>) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(AUTO_SEND_STORAGE_KEY, JSON.stringify(settings));
+  } catch {
+    // Ignore persistence errors
+  }
+}
+
+export const useSocketStore = create<SocketStore>((set, get) => ({
   // Initial state
   connections: [],
   currentConnectionId: null,
@@ -117,6 +159,7 @@ export const useSocketStore = create<SocketStore>((set) => ({
 
   emitLogs: [],
   pinnedMessages: [],
+  autoSendSettings: loadAutoSendSettings(),
 
   isSettingsModalOpen: false,
   editingConnection: null,
@@ -124,6 +167,10 @@ export const useSocketStore = create<SocketStore>((set) => ({
   isSendModalOpen: false,
   sendModalEventName: '',
   sendModalPayload: '{}',
+
+  isComposeModalOpen: false,
+  composeModalEventName: '',
+  composeModalPayload: '{}',
 
   showEmitLog: true,
   showPinnedList: true,
@@ -154,6 +201,18 @@ export const useSocketStore = create<SocketStore>((set) => ({
   // Actions - Pinned messages
   setPinnedMessages: (messages) => set({ pinnedMessages: messages }),
 
+  // Actions - Auto-send settings
+  setAutoSendSettings: (connectionId, settings) =>
+    set((state) => {
+      const next = { ...state.autoSendSettings, [connectionId]: settings };
+      persistAutoSendSettings(next);
+      return { autoSendSettings: next };
+    }),
+  getAutoSendSettings: (connectionId) => {
+    const existing = get().autoSendSettings[connectionId];
+    return existing || { onConnect: false, onReconnect: false };
+  },
+
   // Actions - UI
   openSettingsModal: (connection) =>
     set({
@@ -176,6 +235,18 @@ export const useSocketStore = create<SocketStore>((set) => ({
       isSendModalOpen: false,
       sendModalEventName: '',
       sendModalPayload: '{}',
+    }),
+  openComposeModal: (eventName, payload) =>
+    set({
+      isComposeModalOpen: true,
+      composeModalEventName: eventName || '',
+      composeModalPayload: payload || '{}',
+    }),
+  closeComposeModal: () =>
+    set({
+      isComposeModalOpen: false,
+      composeModalEventName: '',
+      composeModalPayload: '{}',
     }),
   toggleEmitLog: () => set((state) => ({ showEmitLog: !state.showEmitLog })),
   togglePinnedList: () => set((state) => ({ showPinnedList: !state.showPinnedList })),

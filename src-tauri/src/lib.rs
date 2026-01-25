@@ -182,6 +182,8 @@ pub fn run() {
             pinned::delete_pinned_message,
             pinned::reorder_pinned_messages,
             pinned::list_pinned_messages,
+            pinned::toggle_pinned_auto_send,
+            pinned::list_auto_send_messages,
             pinned::find_duplicate_pinned_message,
             // Socket commands
             socket_client::socket_connect,

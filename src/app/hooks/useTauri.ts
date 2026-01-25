@@ -129,6 +129,13 @@ export async function listPinnedMessages(connectionId: number): Promise<PinnedMe
   return result.map((p) => toCamelCase<PinnedMessage>(p));
 }
 
+export async function listAutoSendMessages(connectionId: number): Promise<PinnedMessage[]> {
+  const result = await invoke<Array<Record<string, unknown>>>('list_auto_send_messages', {
+    connectionId,
+  });
+  return result.map((p) => toCamelCase<PinnedMessage>(p));
+}
+
 export async function addPinnedMessage(input: {
   connectionId: number;
   eventName: string;
@@ -167,6 +174,10 @@ export async function deletePinnedMessage(id: number): Promise<void> {
 
 export async function reorderPinnedMessages(ids: number[]): Promise<void> {
   await invoke('reorder_pinned_messages', { ids });
+}
+
+export async function togglePinnedAutoSend(id: number, enabled: boolean): Promise<void> {
+  await invoke('toggle_pinned_auto_send', { id, enabled });
 }
 
 export async function findDuplicatePinnedMessage(

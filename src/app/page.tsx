@@ -31,6 +31,7 @@ import EventTags from './components/EventTags';
 import EventList from './components/EventList';
 import ConnectionModal from './components/ConnectionModal';
 import SendMessageModal from './components/SendMessageModal';
+import ComposeMessageModal from './components/ComposeMessageModal';
 import McpModal from './components/McpModal';
 
 export default function Home() {
@@ -65,6 +66,10 @@ export default function Home() {
   const sendModalPayload = useSocketStore((state) => state.sendModalPayload);
   const openSendModal = useSocketStore((state) => state.openSendModal);
   const closeSendModal = useSocketStore((state) => state.closeSendModal);
+  const isComposeModalOpen = useSocketStore((state) => state.isComposeModalOpen);
+  const composeModalEventName = useSocketStore((state) => state.composeModalEventName);
+  const composeModalPayload = useSocketStore((state) => state.composeModalPayload);
+  const closeComposeModal = useSocketStore((state) => state.closeComposeModal);
 
   const { connect, disconnect } = useSocket();
 
@@ -319,6 +324,14 @@ export default function Home() {
         onClose={closeSendModal}
         initialEventName={sendModalEventName}
         initialPayload={sendModalPayload}
+      />
+
+      {/* Compose Message Modal */}
+      <ComposeMessageModal
+        open={isComposeModalOpen}
+        onClose={closeComposeModal}
+        initialEventName={composeModalEventName}
+        initialPayload={composeModalPayload}
       />
 
       {/* MCP Modal */}

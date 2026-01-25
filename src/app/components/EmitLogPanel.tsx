@@ -42,7 +42,7 @@ export default function EmitLogPanel() {
   const emitLogs = useSocketStore((state) => state.emitLogs);
   const setEmitLogs = useSocketStore((state) => state.setEmitLogs);
   const setPinnedMessages = useSocketStore((state) => state.setPinnedMessages);
-  const openSendModal = useSocketStore((state) => state.openSendModal);
+  const openComposeModal = useSocketStore((state) => state.openComposeModal);
 
   const currentConnection = useCurrentConnection();
 
@@ -81,13 +81,13 @@ export default function EmitLogPanel() {
   }
 
   function handleResend(eventName: string, payload: string) {
-    // Open send modal with pre-filled data
-    openSendModal(eventName, payload);
+    // Open compose modal with pre-filled data
+    openComposeModal(eventName, payload);
   }
 
   function handleEdit(eventName: string, payload: string) {
-    // Open send modal for editing
-    openSendModal(eventName, payload);
+    // Open compose modal for editing
+    openComposeModal(eventName, payload);
   }
 
   async function handlePin(eventName: string, payload: string) {

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { isTauri } from '@tauri-apps/api/core';
+import type { ConnectionStatus } from '@/app/stores/socketStore';
 import { useSocketStore, useCurrentConnection } from '@/app/stores/socketStore';
 import {
   socketConnect,
@@ -9,14 +10,24 @@ import {
   socketEmit,
   socketAddListener,
   socketRemoveListener,
+  listAutoSendMessages,
+  addEmitLog,
+  listEmitLogs,
 } from '@/app/hooks/useTauri';
 
 const isTauriAvailable = typeof window !== 'undefined' && isTauri();
+
+const autoSendState = {
+  lastStatus: null as ConnectionStatus | null,
+  connectedOnce: new Set<number>(),
+  inFlight: false,
+};
 
 export function useSocket() {
   const currentConnection = useCurrentConnection();
   const connectionEvents = useSocketStore((state) => state.connectionEvents);
   const connectionStatus = useSocketStore((state) => state.connectionStatus);
+  const setEmitLogs = useSocketStore((state) => state.setEmitLogs);
 
   const previousListenersRef = useRef<Set<string>>(new Set());
 
@@ -56,6 +67,97 @@ export function useSocket() {
     previousListenersRef.current = currentSet;
   }, [listeningEvents, currentConnection?.id]);
 
+  const emit = useCallback(
+    (eventName: string, payload: unknown): boolean => {
+      if (connectionStatus !== 'connected') return false;
+
+      const payloadString = typeof payload === 'string' ? payload : JSON.stringify(payload);
+
+      if (isTauriAvailable) {
+        void socketEmit(eventName, payloadString).catch((error) => {
+          // Emit errors should NOT change connection status - the socket may still be connected
+          // even if a single message fails to send. Log for debugging purposes.
+          const msg = error instanceof Error ? error.message : 'Failed to emit event';
+          console.error('Socket emit error:', msg);
+        });
+      }
+
+      useSocketStore.getState().addReceivedEvent({
+        id: crypto.randomUUID(),
+        eventName,
+        payload: payloadString,
+        timestamp: new Date(),
+        direction: 'out',
+      });
+
+      return true;
+    },
+    [connectionStatus]
+  );
+
+  useEffect(() => {
+    if (!isTauriAvailable || !currentConnection) {
+      autoSendState.lastStatus = connectionStatus;
+      return;
+    }
+
+    if (connectionStatus !== 'connected' || autoSendState.lastStatus === 'connected') {
+      autoSendState.lastStatus = connectionStatus;
+      return;
+    }
+
+    if (autoSendState.inFlight) {
+      autoSendState.lastStatus = connectionStatus;
+      return;
+    }
+
+    const connectionId = currentConnection.id;
+    const wasConnectedBefore = autoSendState.connectedOnce.has(connectionId);
+    const settings = useSocketStore.getState().getAutoSendSettings(connectionId);
+    const shouldAutoSend = wasConnectedBefore ? settings.onReconnect : settings.onConnect;
+
+    autoSendState.connectedOnce.add(connectionId);
+    autoSendState.lastStatus = connectionStatus;
+
+    if (!shouldAutoSend) return;
+
+    autoSendState.inFlight = true;
+
+    const runAutoSend = async () => {
+      try {
+        const messages = await listAutoSendMessages(connectionId);
+        for (const msg of messages) {
+          if (useSocketStore.getState().connectionStatus !== 'connected') break;
+          let parsed: unknown;
+          try {
+            parsed = JSON.parse(msg.payload);
+          } catch {
+            parsed = msg.payload;
+          }
+          const success = emit(msg.eventName, parsed);
+          if (success) {
+            try {
+              await addEmitLog(connectionId, msg.eventName, msg.payload);
+            } catch {
+              // Ignore log errors
+            }
+          }
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+        try {
+          const logs = await listEmitLogs(connectionId);
+          setEmitLogs(logs);
+        } catch {
+          // Ignore log refresh errors
+        }
+      } finally {
+        autoSendState.inFlight = false;
+      }
+    };
+
+    void runAutoSend();
+  }, [connectionStatus, currentConnection, emit, setEmitLogs]);
+
   const connect = useCallback(() => {
     if (!currentConnection) return;
 
@@ -88,34 +190,6 @@ export function useSocket() {
     setConnectionStatus('disconnected');
     setErrorMessage(null);
   }, []);
-
-  const emit = useCallback(
-    (eventName: string, payload: unknown): boolean => {
-      if (connectionStatus !== 'connected') return false;
-
-      const payloadString = typeof payload === 'string' ? payload : JSON.stringify(payload);
-
-      if (isTauriAvailable) {
-        void socketEmit(eventName, payloadString).catch((error) => {
-          // Emit errors should NOT change connection status - the socket may still be connected
-          // even if a single message fails to send. Log for debugging purposes.
-          const msg = error instanceof Error ? error.message : 'Failed to emit event';
-          console.error('Socket emit error:', msg);
-        });
-      }
-
-      useSocketStore.getState().addReceivedEvent({
-        id: crypto.randomUUID(),
-        eventName,
-        payload: payloadString,
-        timestamp: new Date(),
-        direction: 'out',
-      });
-
-      return true;
-    },
-    [connectionStatus]
-  );
 
   return {
     connect,

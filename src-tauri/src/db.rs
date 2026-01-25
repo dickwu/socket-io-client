@@ -16,8 +16,8 @@ pub type ConnectionRow = (
     String,
     String,
 );
-/// (id, event_name, payload, label, sort_order)
-pub type PinnedMessageRow = (i64, String, String, Option<String>, i64);
+/// (id, event_name, payload, label, sort_order, auto_send)
+pub type PinnedMessageRow = (i64, String, String, Option<String>, i64, bool);
 
 pub fn init_db(path: &PathBuf) -> Result<()> {
     // Initialize DB_PATH with OnceLock - this can only be set once
@@ -75,11 +75,20 @@ pub fn init_db(path: &PathBuf) -> Result<()> {
             payload TEXT DEFAULT '{}',
             label TEXT,
             sort_order INTEGER DEFAULT 0,
+            auto_send INTEGER DEFAULT 0,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (connection_id) REFERENCES connections(id) ON DELETE CASCADE
         )",
         [],
     )?;
+
+    // Migration: add auto_send column if missing (older databases)
+    if !column_exists(&conn, "pinned_messages", "auto_send")? {
+        conn.execute(
+            "ALTER TABLE pinned_messages ADD COLUMN auto_send INTEGER DEFAULT 0",
+            [],
+        )?;
+    }
 
     // Create app_state table for persisting current selection
     conn.execute(
@@ -102,6 +111,18 @@ pub fn get_connection() -> Result<Connection> {
         .lock()
         .map_err(|_| rusqlite::Error::InvalidParameterName("Database lock poisoned".into()))?;
     Connection::open(&*path)
+}
+
+fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool> {
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({})", table))?;
+    let mut rows = stmt.query([])?;
+    while let Some(row) = rows.next()? {
+        let name: String = row.get(1)?;
+        if name == column {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 // Connection operations
@@ -311,6 +332,15 @@ pub fn update_pinned_message(
     Ok(())
 }
 
+pub fn set_pinned_auto_send(id: i64, enabled: bool) -> Result<()> {
+    let conn = get_connection()?;
+    conn.execute(
+        "UPDATE pinned_messages SET auto_send = ?1 WHERE id = ?2",
+        params![enabled as i32, id],
+    )?;
+    Ok(())
+}
+
 pub fn delete_pinned_message(id: i64) -> Result<()> {
     let conn = get_connection()?;
     conn.execute("DELETE FROM pinned_messages WHERE id = ?1", params![id])?;
@@ -332,16 +362,43 @@ pub fn reorder_pinned_messages(ids: &[i64]) -> Result<()> {
 pub fn list_pinned_messages(connection_id: i64) -> Result<Vec<PinnedMessageRow>> {
     let conn = get_connection()?;
     let mut stmt = conn.prepare(
-        "SELECT id, event_name, payload, label, sort_order FROM pinned_messages WHERE connection_id = ?1 ORDER BY sort_order"
+        "SELECT id, event_name, payload, label, sort_order, auto_send FROM pinned_messages WHERE connection_id = ?1 ORDER BY sort_order"
     )?;
 
     let rows = stmt.query_map(params![connection_id], |row| {
+        let auto_send_value: i64 = row.get(5)?;
         Ok((
             row.get(0)?,
             row.get(1)?,
             row.get(2)?,
             row.get(3)?,
             row.get(4)?,
+            auto_send_value != 0,
+        ))
+    })?;
+
+    let mut results = Vec::new();
+    for row in rows {
+        results.push(row?);
+    }
+    Ok(results)
+}
+
+pub fn list_auto_send_messages(connection_id: i64) -> Result<Vec<PinnedMessageRow>> {
+    let conn = get_connection()?;
+    let mut stmt = conn.prepare(
+        "SELECT id, event_name, payload, label, sort_order, auto_send FROM pinned_messages WHERE connection_id = ?1 AND auto_send = 1 ORDER BY sort_order"
+    )?;
+
+    let rows = stmt.query_map(params![connection_id], |row| {
+        let auto_send_value: i64 = row.get(5)?;
+        Ok((
+            row.get(0)?,
+            row.get(1)?,
+            row.get(2)?,
+            row.get(3)?,
+            row.get(4)?,
+            auto_send_value != 0,
         ))
     })?;
 

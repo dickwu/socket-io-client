@@ -741,6 +741,187 @@ html.dark .collapsible-title {
   color: #9ca3af;
 }
 
+/* Message Library */
+.message-library-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.message-library-toolbar {
+  margin-bottom: 12px;
+}
+
+.message-library-warning {
+  margin-top: 12px;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #92400e;
+}
+
+/* Message Cards */
+.message-panel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+}
+
+.message-card {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 120px;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+
+.message-card:hover {
+  border-color: #10b981;
+  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.12);
+  transform: translateY(-1px);
+}
+
+.message-card-dragging {
+  opacity: 0.6;
+  border-style: dashed;
+}
+
+.message-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.message-card-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: #111827;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.message-card-subtitle {
+  font-size: 11px;
+  color: #10b981;
+  background: #ecfdf5;
+  border-radius: 999px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
+.message-card-payload {
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 11px;
+  color: #6b7280;
+  background: #f9fafb;
+  border-radius: 6px;
+  padding: 6px 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.message-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.message-card-meta {
+  font-size: 10px;
+  color: #9ca3af;
+}
+
+.message-card-actions {
+  margin-left: auto;
+}
+
+.message-card-drag {
+  cursor: grab;
+  display: inline-flex;
+  align-items: center;
+  color: #9ca3af;
+  padding: 0 4px;
+}
+
+/* History panel */
+.history-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.history-group-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.history-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.history-group-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.history-group-count {
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+/* Dark mode for message library */
+html.dark .message-library-warning {
+  background: #3f2d0f;
+  border-color: #7c5b1a;
+  color: #fcd34d;
+}
+
+html.dark .message-card {
+  background: #1a1a1a;
+  border-color: #262626;
+}
+
+html.dark .message-card:hover {
+  border-color: #10b981;
+  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.2);
+}
+
+html.dark .message-card-title {
+  color: #e5e7eb;
+}
+
+html.dark .message-card-subtitle {
+  background: rgba(16, 185, 129, 0.15);
+}
+
+html.dark .message-card-payload {
+  background: #141414;
+  color: #9ca3af;
+}
+
+html.dark .history-group-title {
+  color: #e5e7eb;
+}
+
 /* Direction indicators */
 .direction-in {
   color: #10b981;
