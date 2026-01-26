@@ -229,7 +229,7 @@ async fn execute_tool(socket: &SocketManager, name: &str, args: &Value) -> Resul
             let rows = db::list_connections().map_err(|e| e.to_string())?;
             let connections: Vec<Value> = rows
                 .into_iter()
-                .map(|(id, name, url, namespace, _, _, _, _)| {
+                .map(|(id, name, url, namespace, _, _, _, _, _, _)| {
                     json!({
                         "id": id,
                         "name": name,

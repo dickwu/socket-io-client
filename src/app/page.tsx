@@ -23,6 +23,7 @@ import {
   listConnectionEvents,
   listEmitLogs,
   listPinnedMessages,
+  listEventHistory,
   getMcpStatus,
 } from './hooks/useTauri';
 import useSocket from './hooks/useSocket';
@@ -51,6 +52,7 @@ export default function Home() {
   const setConnectionEvents = useSocketStore((state) => state.setConnectionEvents);
   const setEmitLogs = useSocketStore((state) => state.setEmitLogs);
   const setPinnedMessages = useSocketStore((state) => state.setPinnedMessages);
+  const setReceivedEvents = useSocketStore((state) => state.setReceivedEvents);
   const errorMessage = useSocketStore((state) => state.errorMessage);
 
   // MCP state
@@ -137,19 +139,29 @@ export default function Home() {
   const loadConnectionData = useCallback(
     async (connectionId: number) => {
       try {
-        const [events, logs, pinned] = await Promise.all([
+        const [events, logs, pinned, history] = await Promise.all([
           listConnectionEvents(connectionId),
           listEmitLogs(connectionId),
           listPinnedMessages(connectionId),
+          listEventHistory(connectionId, 1000),
         ]);
         setConnectionEvents(events);
         setEmitLogs(logs);
         setPinnedMessages(pinned);
+        // Convert event history from DB format to ReceivedEvent format
+        const receivedEvents = history.map((item) => ({
+          id: String(item.id),
+          eventName: item.eventName,
+          payload: item.payload,
+          timestamp: new Date(item.timestamp),
+          direction: item.direction as 'in' | 'out',
+        }));
+        setReceivedEvents(receivedEvents);
       } catch {
         // Ignore errors
       }
     },
-    [setConnectionEvents, setEmitLogs, setPinnedMessages]
+    [setConnectionEvents, setEmitLogs, setPinnedMessages, setReceivedEvents]
   );
 
   useEffect(() => {

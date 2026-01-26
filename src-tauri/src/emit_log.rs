@@ -9,6 +9,15 @@ pub struct EmitLog {
     pub sent_at: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EventHistoryItem {
+    pub id: i64,
+    pub event_name: String,
+    pub payload: String,
+    pub timestamp: String,
+    pub direction: String,
+}
+
 #[tauri::command]
 pub fn add_emit_log(
     connection_id: i64,
@@ -37,4 +46,30 @@ pub fn list_emit_logs(connection_id: i64, limit: Option<i64>) -> Result<Vec<Emit
 #[tauri::command]
 pub fn clear_emit_logs(connection_id: i64) -> Result<(), String> {
     db::clear_emit_logs(connection_id).map_err(|e| e.to_string())
+}
+
+// Event history commands
+#[tauri::command]
+pub fn list_event_history(
+    connection_id: i64,
+    limit: Option<i64>,
+) -> Result<Vec<EventHistoryItem>, String> {
+    let limit = limit.unwrap_or(1000);
+    let rows = db::list_event_history(connection_id, limit).map_err(|e| e.to_string())?;
+
+    Ok(rows
+        .into_iter()
+        .map(|(id, event_name, payload, timestamp, direction)| EventHistoryItem {
+            id,
+            event_name,
+            payload,
+            timestamp,
+            direction,
+        })
+        .collect())
+}
+
+#[tauri::command]
+pub fn clear_event_history(connection_id: i64) -> Result<(), String> {
+    db::clear_event_history(connection_id).map_err(|e| e.to_string())
 }

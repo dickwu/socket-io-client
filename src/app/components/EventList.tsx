@@ -12,8 +12,9 @@ import {
   RightOutlined,
   CopyOutlined,
 } from '@ant-design/icons';
-import { useSocketStore, useFilteredEvents } from '@/app/stores/socketStore';
+import { useSocketStore, useFilteredEvents, useCurrentConnection } from '@/app/stores/socketStore';
 import { analyzeJsonPayload } from '@/app/lib/jsonPayload';
+import { clearEventHistory } from '@/app/hooks/useTauri';
 import JsonViewerModal from './JsonViewerModal';
 
 const COLLAPSE_THRESHOLD = 200; // Characters threshold for auto-collapse
@@ -174,12 +175,28 @@ function EventItem({ event, onOpenViewer }: EventItemProps) {
 }
 
 export default function EventList() {
+  const { message } = App.useApp();
   const listRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
   const [viewerEvent, setViewerEvent] = useState<EventData | null>(null);
 
   const filteredEvents = useFilteredEvents();
   const clearReceivedEvents = useSocketStore((state) => state.clearReceivedEvents);
+  const currentConnection = useCurrentConnection();
+
+  const handleClearHistory = useCallback(async () => {
+    // Clear in-memory events
+    clearReceivedEvents();
+    // Clear from database if connected to a connection
+    if (currentConnection) {
+      try {
+        await clearEventHistory(currentConnection.id);
+        message.success('History cleared');
+      } catch {
+        message.error('Failed to clear history from database');
+      }
+    }
+  }, [clearReceivedEvents, currentConnection, message]);
 
   // Auto-scroll to bottom when new events arrive
   useEffect(() => {
@@ -228,7 +245,7 @@ export default function EventList() {
             <Button icon={<ArrowUpOutlined />} onClick={scrollToTop} size="small" />
           </Tooltip>
           <Tooltip title="Clear all events">
-            <Button danger icon={<ClearOutlined />} onClick={clearReceivedEvents} size="small">
+            <Button danger icon={<ClearOutlined />} onClick={handleClearHistory} size="small">
               Clear
             </Button>
           </Tooltip>

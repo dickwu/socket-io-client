@@ -10,7 +10,7 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
 } from '@ant-design/icons';
-import { useSocketStore, useCurrentConnection, Connection } from '@/app/stores/socketStore';
+import { useSocketStore, Connection } from '@/app/stores/socketStore';
 import { listConnections, deleteConnection, setCurrentConnection } from '@/app/hooks/useTauri';
 import useSocket from '@/app/hooks/useSocket';
 
@@ -25,13 +25,7 @@ export default function Sidebar() {
   const sidebarCollapsed = useSocketStore((state) => state.sidebarCollapsed);
   const toggleSidebar = useSocketStore((state) => state.toggleSidebar);
 
-  const currentConnection = useCurrentConnection();
   const { disconnect } = useSocket();
-
-  // Load connections on mount
-  useEffect(() => {
-    loadConnections();
-  }, []);
 
   async function loadConnections() {
     try {
@@ -42,6 +36,13 @@ export default function Sidebar() {
       console.log('Running outside Tauri');
     }
   }
+
+  // Load connections on mount
+  useEffect(() => {
+    loadConnections();
+  });
+
+  
 
   async function handleSelectConnection(conn: Connection) {
     if (conn.id === currentConnectionId) return;
@@ -77,7 +78,7 @@ export default function Sidebar() {
           }
 
           message.success('Connection deleted');
-        } catch (err) {
+        } catch {
           message.error('Failed to delete connection');
         }
       },

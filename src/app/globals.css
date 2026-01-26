@@ -742,13 +742,6 @@ html.dark .collapsible-title {
 }
 
 /* Message Library */
-.message-library-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
 .message-library-toolbar {
   margin-bottom: 12px;
 }

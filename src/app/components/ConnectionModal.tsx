@@ -12,6 +12,7 @@ import {
   addConnectionEvent,
   removeConnectionEvent,
   toggleConnectionEvent,
+  setConnectionAutoSend,
 } from '@/app/hooks/useTauri';
 
 const { TextArea } = Input;
@@ -38,8 +39,6 @@ export default function ConnectionModal() {
   const closeSettingsModal = useSocketStore((state) => state.closeSettingsModal);
   const setConnections = useSocketStore((state) => state.setConnections);
   const setConnectionEvents = useSocketStore((state) => state.setConnectionEvents);
-  const setAutoSendSettings = useSocketStore((state) => state.setAutoSendSettings);
-  const getAutoSendSettings = useSocketStore((state) => state.getAutoSendSettings);
 
   const isEditing = !!editingConnection;
 
@@ -63,16 +62,16 @@ export default function ConnectionModal() {
       // Load events
       loadEvents(editingConnection.id);
 
-      const settings = getAutoSendSettings(editingConnection.id);
-      setAutoSendOnConnect(settings.onConnect);
-      setAutoSendOnReconnect(settings.onReconnect);
+      // Use DB-backed auto-send settings from connection
+      setAutoSendOnConnect(editingConnection.autoSendOnConnect);
+      setAutoSendOnReconnect(editingConnection.autoSendOnReconnect);
     } else {
       form.resetFields();
       setEvents([]);
       setAutoSendOnConnect(false);
       setAutoSendOnReconnect(false);
     }
-  }, [isOpen, editingConnection, form, getAutoSendSettings]);
+  }, [isOpen, editingConnection, form]);
 
   async function loadEvents(connectionId: number) {
     try {
@@ -303,13 +302,17 @@ export default function ConnectionModal() {
                   <Switch
                     size="small"
                     checked={autoSendOnConnect}
-                    onChange={(checked) => {
+                    onChange={async (checked) => {
                       setAutoSendOnConnect(checked);
                       if (editingConnection) {
-                        setAutoSendSettings(editingConnection.id, {
-                          onConnect: checked,
-                          onReconnect: autoSendOnReconnect,
-                        });
+                        try {
+                          await setConnectionAutoSend(editingConnection.id, checked, autoSendOnReconnect);
+                          // Refresh connections to update the store
+                          const conns = await listConnections();
+                          setConnections(conns);
+                        } catch {
+                          message.error('Failed to update auto-send settings');
+                        }
                       }
                     }}
                   />
@@ -319,13 +322,17 @@ export default function ConnectionModal() {
                   <Switch
                     size="small"
                     checked={autoSendOnReconnect}
-                    onChange={(checked) => {
+                    onChange={async (checked) => {
                       setAutoSendOnReconnect(checked);
                       if (editingConnection) {
-                        setAutoSendSettings(editingConnection.id, {
-                          onConnect: autoSendOnConnect,
-                          onReconnect: checked,
-                        });
+                        try {
+                          await setConnectionAutoSend(editingConnection.id, autoSendOnConnect, checked);
+                          // Refresh connections to update the store
+                          const conns = await listConnections();
+                          setConnections(conns);
+                        } catch {
+                          message.error('Failed to update auto-send settings');
+                        }
                       }
                     }}
                   />

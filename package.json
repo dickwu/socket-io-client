@@ -21,7 +21,7 @@
     "@tauri-apps/plugin-updater": "^2.9.0",
     "@tauri-apps/plugin-dialog": "^2.6.0",
     "@tauri-apps/plugin-fs": "^2.4.5",
-    "antd": "^6.2.1",
+    "antd": "^6.2.2",
     "next": "16.1.4",
     "react": "19.2.3",
     "react-dom": "19.2.3",

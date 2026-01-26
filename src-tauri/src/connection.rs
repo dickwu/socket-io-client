@@ -11,6 +11,8 @@ pub struct Connection {
     pub options: String,
     pub created_at: String,
     pub updated_at: String,
+    pub auto_send_on_connect: bool,
+    pub auto_send_on_reconnect: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -82,7 +84,7 @@ pub fn list_connections() -> Result<Vec<Connection>, String> {
     Ok(rows
         .into_iter()
         .map(
-            |(id, name, url, namespace, auth_token, options, created_at, updated_at)| Connection {
+            |(id, name, url, namespace, auth_token, options, created_at, updated_at, auto_send_on_connect, auto_send_on_reconnect)| Connection {
                 id,
                 name,
                 url,
@@ -91,6 +93,8 @@ pub fn list_connections() -> Result<Vec<Connection>, String> {
                 options,
                 created_at,
                 updated_at,
+                auto_send_on_connect,
+                auto_send_on_reconnect,
             },
         )
         .collect())
@@ -101,7 +105,7 @@ pub fn get_connection(id: i64) -> Result<Option<Connection>, String> {
     let row = db::get_connection_by_id(id).map_err(|e| e.to_string())?;
 
     Ok(row.map(
-        |(id, name, url, namespace, auth_token, options, created_at, updated_at)| Connection {
+        |(id, name, url, namespace, auth_token, options, created_at, updated_at, auto_send_on_connect, auto_send_on_reconnect)| Connection {
             id,
             name,
             url,
@@ -110,8 +114,20 @@ pub fn get_connection(id: i64) -> Result<Option<Connection>, String> {
             options,
             created_at,
             updated_at,
+            auto_send_on_connect,
+            auto_send_on_reconnect,
         },
     ))
+}
+
+#[tauri::command]
+pub fn set_connection_auto_send(
+    connection_id: i64,
+    on_connect: bool,
+    on_reconnect: bool,
+) -> Result<(), String> {
+    db::set_connection_auto_send(connection_id, on_connect, on_reconnect)
+        .map_err(|e| e.to_string())
 }
 
 // Connection events commands

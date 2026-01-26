@@ -172,10 +172,14 @@ pub fn run() {
             connection::list_connection_events,
             connection::set_current_connection,
             connection::get_current_connection,
+            connection::set_connection_auto_send,
             // Emit log commands
             emit_log::add_emit_log,
             emit_log::list_emit_logs,
             emit_log::clear_emit_logs,
+            // Event history commands
+            emit_log::list_event_history,
+            emit_log::clear_event_history,
             // Pinned message commands
             pinned::add_pinned_message,
             pinned::update_pinned_message,

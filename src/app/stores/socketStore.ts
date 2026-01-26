@@ -10,6 +10,8 @@ export interface Connection {
   options: string;
   createdAt: string;
   updatedAt: string;
+  autoSendOnConnect: boolean;
+  autoSendOnReconnect: boolean;
 }
 
 export interface ConnectionEvent {
@@ -34,17 +36,21 @@ export interface PinnedMessage {
   autoSend?: boolean;
 }
 
-export interface AutoSendSettings {
-  onConnect: boolean;
-  onReconnect: boolean;
-}
-
 export interface ReceivedEvent {
   id: string;
   eventName: string;
   payload: string;
   timestamp: Date;
   direction: 'in' | 'out';
+}
+
+// Event history item from SQLite database
+export interface EventHistoryItem {
+  id: number;
+  eventName: string;
+  payload: string;
+  timestamp: string;
+  direction: string;
 }
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
@@ -66,9 +72,6 @@ interface SocketStore {
 
   // Pinned messages
   pinnedMessages: PinnedMessage[];
-
-  // Auto-send settings per connection
-  autoSendSettings: Record<number, AutoSendSettings>;
 
   // UI state
   isSettingsModalOpen: boolean;
@@ -97,6 +100,7 @@ interface SocketStore {
 
   // Actions - Events
   setConnectionEvents: (events: ConnectionEvent[]) => void;
+  setReceivedEvents: (events: ReceivedEvent[]) => void;
   addReceivedEvent: (event: ReceivedEvent) => void;
   clearReceivedEvents: () => void;
   setFilteredEventName: (eventName: string | null) => void;
@@ -107,10 +111,6 @@ interface SocketStore {
 
   // Actions - Pinned messages
   setPinnedMessages: (messages: PinnedMessage[]) => void;
-
-  // Actions - Auto-send settings
-  setAutoSendSettings: (connectionId: number, settings: AutoSendSettings) => void;
-  getAutoSendSettings: (connectionId: number) => AutoSendSettings;
 
   // Actions - UI
   openSettingsModal: (connection?: Connection) => void;
@@ -124,29 +124,7 @@ interface SocketStore {
   toggleSidebar: () => void;
 }
 
-const AUTO_SEND_STORAGE_KEY = 'socket-io-client:auto-send-settings';
-
-function loadAutoSendSettings(): Record<number, AutoSendSettings> {
-  if (typeof window === 'undefined') return {};
-  try {
-    const raw = localStorage.getItem(AUTO_SEND_STORAGE_KEY);
-    if (!raw) return {};
-    return JSON.parse(raw) as Record<number, AutoSendSettings>;
-  } catch {
-    return {};
-  }
-}
-
-function persistAutoSendSettings(settings: Record<number, AutoSendSettings>) {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(AUTO_SEND_STORAGE_KEY, JSON.stringify(settings));
-  } catch {
-    // Ignore persistence errors
-  }
-}
-
-export const useSocketStore = create<SocketStore>((set, get) => ({
+export const useSocketStore = create<SocketStore>((set) => ({
   // Initial state
   connections: [],
   currentConnectionId: null,
@@ -159,7 +137,6 @@ export const useSocketStore = create<SocketStore>((set, get) => ({
 
   emitLogs: [],
   pinnedMessages: [],
-  autoSendSettings: loadAutoSendSettings(),
 
   isSettingsModalOpen: false,
   editingConnection: null,
@@ -184,6 +161,7 @@ export const useSocketStore = create<SocketStore>((set, get) => ({
 
   // Actions - Events
   setConnectionEvents: (events) => set({ connectionEvents: events }),
+  setReceivedEvents: (events) => set({ receivedEvents: events }),
   addReceivedEvent: (event) =>
     set((state) => ({
       receivedEvents: [event, ...state.receivedEvents].slice(0, 1000), // Keep last 1000 events
@@ -200,18 +178,6 @@ export const useSocketStore = create<SocketStore>((set, get) => ({
 
   // Actions - Pinned messages
   setPinnedMessages: (messages) => set({ pinnedMessages: messages }),
-
-  // Actions - Auto-send settings
-  setAutoSendSettings: (connectionId, settings) =>
-    set((state) => {
-      const next = { ...state.autoSendSettings, [connectionId]: settings };
-      persistAutoSendSettings(next);
-      return { autoSendSettings: next };
-    }),
-  getAutoSendSettings: (connectionId) => {
-    const existing = get().autoSendSettings[connectionId];
-    return existing || { onConnect: false, onReconnect: false };
-  },
 
   // Actions - UI
   openSettingsModal: (connection) =>

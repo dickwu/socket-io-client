@@ -1,5 +1,7 @@
 use std::collections::{HashSet, VecDeque};
 use std::sync::{Arc, Mutex, RwLock};
+use std::thread;
+use std::time::Duration;
 
 use chrono::Utc;
 use rust_socketio::client::Client;
@@ -78,6 +80,8 @@ pub struct SocketManager {
     connecting: Arc<Mutex<bool>>,
     connection_status: Arc<Mutex<String>>,
     event_buffer: Arc<Mutex<EventBuffer>>,
+    /// Tracks connections that have connected at least once (for reconnect detection)
+    connected_once: Arc<Mutex<HashSet<i64>>>,
     app_handle: AppHandle,
 }
 
@@ -90,8 +94,64 @@ impl SocketManager {
             connecting: Arc::new(Mutex::new(false)),
             connection_status: Arc::new(Mutex::new("disconnected".to_string())),
             event_buffer: Arc::new(Mutex::new(EventBuffer::new(100))),
+            connected_once: Arc::new(Mutex::new(HashSet::new())),
             app_handle,
         }
+    }
+
+    /// Check if this connection has connected before (for reconnect detection)
+    fn has_connected_before(&self, connection_id: i64) -> bool {
+        if let Ok(guard) = self.connected_once.lock() {
+            return guard.contains(&connection_id);
+        }
+        false
+    }
+
+    /// Mark connection as having connected at least once
+    fn mark_connected(&self, connection_id: i64) {
+        if let Ok(mut guard) = self.connected_once.lock() {
+            guard.insert(connection_id);
+        }
+    }
+
+    /// Perform auto-send for a connection
+    fn do_auto_send(&self, connection_id: i64) {
+        // Get auto-send messages from DB
+        let messages = match db::list_auto_send_messages(connection_id) {
+            Ok(msgs) => msgs,
+            Err(e) => {
+                log::error!("[AutoSend] Failed to fetch auto-send messages: {}", e);
+                return;
+            }
+        };
+
+        if messages.is_empty() {
+            log::info!("[AutoSend] No auto-send messages configured");
+            return;
+        }
+
+        log::info!("[AutoSend] Sending {} messages", messages.len());
+
+        for (_, event_name, payload, _, _, _) in messages {
+            // Small delay between messages
+            thread::sleep(Duration::from_millis(50));
+
+            // Check if still connected
+            if self.get_status() != "connected" {
+                log::warn!("[AutoSend] Connection lost, stopping auto-send");
+                break;
+            }
+
+            log::info!("[AutoSend] Emitting: {}", event_name);
+            if let Err(e) = self.emit_message(&event_name, &payload) {
+                log::error!("[AutoSend] Failed to emit {}: {}", event_name, e);
+            } else {
+                // Log to emit_logs
+                let _ = db::add_emit_log(connection_id, &event_name, &payload);
+            }
+        }
+
+        log::info!("[AutoSend] Completed");
     }
 
     pub fn connect(&self, connection_id: i64) -> Result<(), String> {
@@ -132,8 +192,8 @@ impl SocketManager {
             .emit(event_name, payload_value)
             .map_err(|e| e.to_string())?;
 
-        let timestamp = Utc::now().to_rfc3339();
-        self.record_event(event_name, payload.to_string(), "out", timestamp);
+        // Use emit_outgoing_event to both record to DB AND notify frontend via Tauri event
+        self.emit_outgoing_event(event_name, payload.to_string());
         Ok(())
     }
 
@@ -249,14 +309,28 @@ impl SocketManager {
     }
 
     fn record_event(&self, event_name: &str, payload: String, direction: &str, timestamp: String) {
+        // Add to in-memory buffer
         let event = BufferedEvent {
             event_name: event_name.to_string(),
-            payload,
-            timestamp,
+            payload: payload.clone(),
+            timestamp: timestamp.clone(),
             direction: direction.to_string(),
         };
         if let Ok(mut guard) = self.event_buffer.lock() {
             guard.push(event);
+        }
+
+        // Persist to SQLite database
+        if let Some(connection_id) = self.get_current_connection_id() {
+            if let Err(e) = db::add_event_history(
+                connection_id,
+                event_name,
+                &payload,
+                &timestamp,
+                direction,
+            ) {
+                log::warn!("Failed to persist event to DB: {}", e);
+            }
         }
     }
 
@@ -349,7 +423,7 @@ fn do_connect(connection_id: i64, state: &SocketManager) -> Result<(), String> {
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "Connection not found".to_string())?;
 
-    let (_, _name, url, namespace, auth_token, options, _created_at, _updated_at) = connection;
+    let (_, _name, url, namespace, auth_token, options, _created_at, _updated_at, _, _) = connection;
 
     let events = db::list_connection_events(connection_id).map_err(|e| e.to_string())?;
     let listening: Vec<String> = events
@@ -381,12 +455,54 @@ fn do_connect(connection_id: i64, state: &SocketManager) -> Result<(), String> {
     }
 
     let status_state = state.clone();
+    let was_connected_before = state.has_connected_before(connection_id);
+    let auto_send_on_connect = options_value
+        .get("autoSendOnConnect")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let auto_send_on_reconnect = options_value
+        .get("autoSendOnReconnect")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    
+    // Get auto-send settings from DB (these take priority over options)
+    let (db_auto_connect, db_auto_reconnect) = db::get_connection_by_id(connection_id)
+        .ok()
+        .flatten()
+        .map(|(_, _, _, _, _, _, _, _, on_connect, on_reconnect)| (on_connect, on_reconnect))
+        .unwrap_or((auto_send_on_connect, auto_send_on_reconnect));
+
     builder = builder.on(Event::Connect, move |_payload, _| {
         status_state.emit_status("connected", None);
         status_state.emit_event(
             "connect",
             json!({ "connectionId": connection_id }).to_string(),
         );
+
+        // Determine if we should auto-send
+        let should_auto_send = if was_connected_before {
+            db_auto_reconnect
+        } else {
+            db_auto_connect
+        };
+
+        log::info!(
+            "[AutoSend] connection_id={}, was_connected_before={}, auto_on_connect={}, auto_on_reconnect={}, should_auto_send={}",
+            connection_id, was_connected_before, db_auto_connect, db_auto_reconnect, should_auto_send
+        );
+
+        // Mark as connected (for future reconnect detection)
+        status_state.mark_connected(connection_id);
+
+        if should_auto_send {
+            // Run auto-send in a separate thread to not block the callback
+            let auto_send_state = status_state.clone();
+            thread::spawn(move || {
+                // Small delay to ensure socket is fully ready
+                thread::sleep(Duration::from_millis(100));
+                auto_send_state.do_auto_send(connection_id);
+            });
+        }
     });
 
     let disconnect_state = state.clone();

@@ -5,7 +5,7 @@ use std::sync::{Mutex, OnceLock};
 static DB_PATH: OnceLock<Mutex<PathBuf>> = OnceLock::new();
 
 // Type aliases to reduce complexity warnings
-/// (id, name, url, namespace, auth_token, options, created_at, updated_at)
+/// (id, name, url, namespace, auth_token, options, created_at, updated_at, auto_send_on_connect, auto_send_on_reconnect)
 pub type ConnectionRow = (
     i64,
     String,
@@ -15,9 +15,13 @@ pub type ConnectionRow = (
     String,
     String,
     String,
+    bool,
+    bool,
 );
 /// (id, event_name, payload, label, sort_order, auto_send)
 pub type PinnedMessageRow = (i64, String, String, Option<String>, i64, bool);
+/// (id, event_name, payload, timestamp, direction)
+pub type EventHistoryRow = (i64, String, String, String, String);
 
 pub fn init_db(path: &PathBuf) -> Result<()> {
     // Initialize DB_PATH with OnceLock - this can only be set once
@@ -89,6 +93,44 @@ pub fn init_db(path: &PathBuf) -> Result<()> {
             [],
         )?;
     }
+
+    // Migration: add auto_send_on_connect column if missing
+    if !column_exists(&conn, "connections", "auto_send_on_connect")? {
+        conn.execute(
+            "ALTER TABLE connections ADD COLUMN auto_send_on_connect INTEGER DEFAULT 0",
+            [],
+        )?;
+    }
+
+    // Migration: add auto_send_on_reconnect column if missing
+    if !column_exists(&conn, "connections", "auto_send_on_reconnect")? {
+        conn.execute(
+            "ALTER TABLE connections ADD COLUMN auto_send_on_reconnect INTEGER DEFAULT 0",
+            [],
+        )?;
+    }
+
+    // Create event_history table for persisting socket events
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS event_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            connection_id INTEGER NOT NULL,
+            event_name TEXT NOT NULL,
+            payload TEXT DEFAULT '{}',
+            timestamp TEXT NOT NULL,
+            direction TEXT NOT NULL CHECK(direction IN ('in', 'out')),
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (connection_id) REFERENCES connections(id) ON DELETE CASCADE
+        )",
+        [],
+    )?;
+
+    // Create index for faster queries on event_history
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_event_history_connection_timestamp 
+         ON event_history(connection_id, created_at DESC)",
+        [],
+    )?;
 
     // Create app_state table for persisting current selection
     conn.execute(
@@ -163,10 +205,23 @@ pub fn delete_connection(id: i64) -> Result<()> {
     Ok(())
 }
 
+pub fn set_connection_auto_send(
+    id: i64,
+    on_connect: bool,
+    on_reconnect: bool,
+) -> Result<()> {
+    let conn = get_connection()?;
+    conn.execute(
+        "UPDATE connections SET auto_send_on_connect = ?1, auto_send_on_reconnect = ?2 WHERE id = ?3",
+        params![on_connect as i32, on_reconnect as i32, id],
+    )?;
+    Ok(())
+}
+
 pub fn list_connections() -> Result<Vec<ConnectionRow>> {
     let conn = get_connection()?;
     let mut stmt = conn.prepare(
-        "SELECT id, name, url, namespace, auth_token, options, created_at, updated_at FROM connections ORDER BY updated_at DESC"
+        "SELECT id, name, url, namespace, auth_token, options, created_at, updated_at, COALESCE(auto_send_on_connect, 0), COALESCE(auto_send_on_reconnect, 0) FROM connections ORDER BY updated_at DESC"
     )?;
 
     let rows = stmt.query_map([], |row| {
@@ -179,6 +234,8 @@ pub fn list_connections() -> Result<Vec<ConnectionRow>> {
             row.get(5)?,
             row.get(6)?,
             row.get(7)?,
+            row.get::<_, i64>(8)? != 0,
+            row.get::<_, i64>(9)? != 0,
         ))
     })?;
 
@@ -192,7 +249,7 @@ pub fn list_connections() -> Result<Vec<ConnectionRow>> {
 pub fn get_connection_by_id(id: i64) -> Result<Option<ConnectionRow>> {
     let conn = get_connection()?;
     let mut stmt = conn.prepare(
-        "SELECT id, name, url, namespace, auth_token, options, created_at, updated_at FROM connections WHERE id = ?1"
+        "SELECT id, name, url, namespace, auth_token, options, created_at, updated_at, COALESCE(auto_send_on_connect, 0), COALESCE(auto_send_on_reconnect, 0) FROM connections WHERE id = ?1"
     )?;
 
     let mut rows = stmt.query(params![id])?;
@@ -206,6 +263,8 @@ pub fn get_connection_by_id(id: i64) -> Result<Option<ConnectionRow>> {
             row.get(5)?,
             row.get(6)?,
             row.get(7)?,
+            row.get::<_, i64>(8)? != 0,
+            row.get::<_, i64>(9)? != 0,
         )))
     } else {
         Ok(None)
@@ -425,6 +484,54 @@ pub fn find_duplicate_pinned_message(
     } else {
         Ok(None)
     }
+}
+
+// Event history operations
+pub fn add_event_history(
+    connection_id: i64,
+    event_name: &str,
+    payload: &str,
+    timestamp: &str,
+    direction: &str,
+) -> Result<i64> {
+    let conn = get_connection()?;
+    conn.execute(
+        "INSERT INTO event_history (connection_id, event_name, payload, timestamp, direction) VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![connection_id, event_name, payload, timestamp, direction],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+pub fn list_event_history(connection_id: i64, limit: i64) -> Result<Vec<EventHistoryRow>> {
+    let conn = get_connection()?;
+    let mut stmt = conn.prepare(
+        "SELECT id, event_name, payload, timestamp, direction FROM event_history WHERE connection_id = ?1 ORDER BY created_at DESC LIMIT ?2"
+    )?;
+
+    let rows = stmt.query_map(params![connection_id, limit], |row| {
+        Ok((
+            row.get(0)?,
+            row.get(1)?,
+            row.get(2)?,
+            row.get(3)?,
+            row.get(4)?,
+        ))
+    })?;
+
+    let mut results = Vec::new();
+    for row in rows {
+        results.push(row?);
+    }
+    Ok(results)
+}
+
+pub fn clear_event_history(connection_id: i64) -> Result<()> {
+    let conn = get_connection()?;
+    conn.execute(
+        "DELETE FROM event_history WHERE connection_id = ?1",
+        params![connection_id],
+    )?;
+    Ok(())
 }
 
 // App state operations

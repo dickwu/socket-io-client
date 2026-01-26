@@ -50,11 +50,26 @@ export default function SendMessageModal({ open, onClose }: SendMessageModalProp
   const isConnected = connectionStatus === 'connected';
   const search = normalizeSearch(searchValue);
 
+  // Check if there are auto-send messages but the feature is disabled
+  const hasAutoSendMessages = pinnedMessages.some((msg) => msg.autoSend);
+  const autoSendFeatureDisabled = currentConnection
+    ? hasAutoSendMessages && !currentConnection.autoSendOnConnect && !currentConnection.autoSendOnReconnect
+    : false;
+
+  // Load emit logs and reset search when modal opens
   useEffect(() => {
     if (open) {
       setSearchValue('');
+      // Refresh emit logs when modal opens
+      if (currentConnection) {
+        listEmitLogs(currentConnection.id)
+          .then((logs) => setEmitLogs(logs))
+          .catch(() => {
+            // Ignore errors
+          });
+      }
     }
-  }, [open]);
+  }, [open, currentConnection, setEmitLogs]);
 
   const filteredPinned = useMemo(() => {
     if (!search) return pinnedMessages;
@@ -220,7 +235,7 @@ export default function SendMessageModal({ open, onClose }: SendMessageModalProp
   return (
     <Modal
       title={
-        <div className="message-library-title">
+        <div className="flex items-center justify-between w-[calc(100%-24px)]">
           <span>Message Library</span>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => openComposeModal()}>
             Compose
@@ -288,6 +303,13 @@ export default function SendMessageModal({ open, onClose }: SendMessageModalProp
       {!isConnected && (
         <div className="message-library-warning">
           Not connected to server. You can still browse, but sending is disabled.
+        </div>
+      )}
+
+      {autoSendFeatureDisabled && (
+        <div className="message-library-warning" style={{ background: '#fef3cd', color: '#856404' }}>
+          You have messages marked for auto-send, but &quot;Auto-send on connect&quot; is disabled.
+          Enable it in Connection Settings (gear icon) for auto-send to work.
         </div>
       )}
 

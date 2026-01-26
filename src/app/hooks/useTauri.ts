@@ -1,7 +1,7 @@
 'use client';
 
 import { invoke } from '@tauri-apps/api/core';
-import { Connection, ConnectionEvent, EmitLog, PinnedMessage } from '@/app/stores/socketStore';
+import { Connection, ConnectionEvent, EmitLog, PinnedMessage, EventHistoryItem } from '@/app/stores/socketStore';
 
 // Convert snake_case to camelCase
 function toCamelCase<T>(obj: Record<string, unknown>): T {
@@ -66,6 +66,14 @@ export async function deleteConnection(id: number): Promise<void> {
   await invoke('delete_connection', { id });
 }
 
+export async function setConnectionAutoSend(
+  connectionId: number,
+  onConnect: boolean,
+  onReconnect: boolean
+): Promise<void> {
+  await invoke('set_connection_auto_send', { connectionId, onConnect, onReconnect });
+}
+
 export async function getConnection(id: number): Promise<Connection | null> {
   const result = await invoke<Record<string, unknown> | null>('get_connection', { id });
   return result ? toCamelCase<Connection>(result) : null;
@@ -119,6 +127,22 @@ export async function addEmitLog(
 
 export async function clearEmitLogs(connectionId: number): Promise<void> {
   await invoke('clear_emit_logs', { connectionId });
+}
+
+// Event history commands
+export async function listEventHistory(
+  connectionId: number,
+  limit?: number
+): Promise<EventHistoryItem[]> {
+  const result = await invoke<Array<Record<string, unknown>>>('list_event_history', {
+    connectionId,
+    limit,
+  });
+  return result.map((e) => toCamelCase<EventHistoryItem>(e));
+}
+
+export async function clearEventHistory(connectionId: number): Promise<void> {
+  await invoke('clear_event_history', { connectionId });
 }
 
 // Pinned messages commands
