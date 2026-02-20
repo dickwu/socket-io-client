@@ -27,17 +27,17 @@ The app includes a built-in MCP (Model Context Protocol) server that enables AI 
 
 ### Available MCP Tools
 
-| Tool | Description |
-|------|-------------|
-| `list_connections` | List all saved Socket.IO connection profiles |
+| Tool                    | Description                                            |
+| ----------------------- | ------------------------------------------------------ |
+| `list_connections`      | List all saved Socket.IO connection profiles           |
 | `get_connection_status` | Get current connection status and active connection ID |
-| `connect` | Connect to a Socket.IO server by connection ID |
-| `disconnect` | Disconnect from the current Socket.IO server |
-| `send_message` | Send an event with JSON payload to the server |
-| `get_recent_events` | Get recent Socket.IO events (default: last 50) |
-| `list_event_listeners` | List all active event listeners |
-| `add_event_listener` | Add a listener for incoming events |
-| `remove_event_listener` | Remove an event listener |
+| `connect`               | Connect to a Socket.IO server by connection ID         |
+| `disconnect`            | Disconnect from the current Socket.IO server           |
+| `send_message`          | Send an event with JSON payload to the server          |
+| `get_recent_events`     | Get recent Socket.IO events (default: last 50)         |
+| `list_event_listeners`  | List all active event listeners                        |
+| `add_event_listener`    | Add a listener for incoming events                     |
+| `remove_event_listener` | Remove an event listener                               |
 
 ### Configuring MCP Clients
 

@@ -53,7 +53,9 @@ export default function SendMessageModal({ open, onClose }: SendMessageModalProp
   // Check if there are auto-send messages but the feature is disabled
   const hasAutoSendMessages = pinnedMessages.some((msg) => msg.autoSend);
   const autoSendFeatureDisabled = currentConnection
-    ? hasAutoSendMessages && !currentConnection.autoSendOnConnect && !currentConnection.autoSendOnReconnect
+    ? hasAutoSendMessages &&
+      !currentConnection.autoSendOnConnect &&
+      !currentConnection.autoSendOnReconnect
     : false;
 
   // Load emit logs and reset search when modal opens
@@ -87,8 +89,7 @@ export default function SendMessageModal({ open, onClose }: SendMessageModalProp
     if (!search) return emitLogs;
     return emitLogs.filter(
       (log) =>
-        log.eventName.toLowerCase().includes(search) ||
-        log.payload.toLowerCase().includes(search)
+        log.eventName.toLowerCase().includes(search) || log.payload.toLowerCase().includes(search)
     );
   }, [emitLogs, search]);
 
@@ -153,9 +154,7 @@ export default function SendMessageModal({ open, onClose }: SendMessageModalProp
     async (ids: number[]) => {
       if (!currentConnection) return;
       const previous = pinnedMessages;
-      const next = ids
-        .map((id) => previous.find((msg) => msg.id === id))
-        .filter(Boolean);
+      const next = ids.map((id) => previous.find((msg) => msg.id === id)).filter(Boolean);
       setPinnedMessages(next as typeof pinnedMessages);
       try {
         await reorderPinnedMessages(ids);
@@ -235,7 +234,7 @@ export default function SendMessageModal({ open, onClose }: SendMessageModalProp
   return (
     <Modal
       title={
-        <div className="flex items-center justify-between w-[calc(100%-24px)]">
+        <div className="flex w-[calc(100%-24px)] items-center justify-between">
           <span>Message Library</span>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => openComposeModal()}>
             Compose
@@ -307,7 +306,10 @@ export default function SendMessageModal({ open, onClose }: SendMessageModalProp
       )}
 
       {autoSendFeatureDisabled && (
-        <div className="message-library-warning" style={{ background: '#fef3cd', color: '#856404' }}>
+        <div
+          className="message-library-warning"
+          style={{ background: '#fef3cd', color: '#856404' }}
+        >
           You have messages marked for auto-send, but &quot;Auto-send on connect&quot; is disabled.
           Enable it in Connection Settings (gear icon) for auto-send to work.
         </div>

@@ -45,8 +45,6 @@ export default function Sidebar() {
     loadConnections();
   }, [loadConnections]);
 
-  
-
   async function handleSelectConnection(conn: Connection) {
     if (conn.id === currentConnectionId) return;
 
@@ -154,9 +152,9 @@ export default function Sidebar() {
                   onClick={() => handleSelectConnection(conn)}
                 >
                   <div
-                    className={`connection-item-status ${
-                      getStatusClass(connectionStatuses[conn.id])
-                    }`}
+                    className={`connection-item-status ${getStatusClass(
+                      connectionStatuses[conn.id]
+                    )}`}
                   />
                 </div>
               </Tooltip>
@@ -191,9 +189,7 @@ export default function Sidebar() {
               onClick={() => handleSelectConnection(conn)}
             >
               <div
-                className={`connection-item-status ${
-                  getStatusClass(connectionStatuses[conn.id])
-                }`}
+                className={`connection-item-status ${getStatusClass(connectionStatuses[conn.id])}`}
               />
               <div className="connection-item-info">
                 <div className="connection-item-name">{conn.name}</div>

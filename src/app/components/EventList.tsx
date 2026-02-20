@@ -100,7 +100,9 @@ function EventItem({ event, onOpenViewer }: EventItemProps) {
 
   // Content to display
   const displayContent =
-    isLarge && !expanded ? getPreviewPayload(formattedPayload, MAX_PREVIEW_LINES) : formattedPayload;
+    isLarge && !expanded
+      ? getPreviewPayload(formattedPayload, MAX_PREVIEW_LINES)
+      : formattedPayload;
 
   return (
     <div className="event-item animate-slide-in">

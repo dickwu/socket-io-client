@@ -8,8 +8,8 @@ const nextConfig: NextConfig = {
   // Tauri needs static export for production build
   distDir: 'dist',
   turbopack: {
-    root: './'
-  }
+    root: './',
+  },
 };
 
 export default nextConfig;

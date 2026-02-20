@@ -306,7 +306,11 @@ export default function ConnectionModal() {
                       setAutoSendOnConnect(checked);
                       if (editingConnection) {
                         try {
-                          await setConnectionAutoSend(editingConnection.id, checked, autoSendOnReconnect);
+                          await setConnectionAutoSend(
+                            editingConnection.id,
+                            checked,
+                            autoSendOnReconnect
+                          );
                           // Refresh connections to update the store
                           const conns = await listConnections();
                           setConnections(conns);
@@ -326,7 +330,11 @@ export default function ConnectionModal() {
                       setAutoSendOnReconnect(checked);
                       if (editingConnection) {
                         try {
-                          await setConnectionAutoSend(editingConnection.id, autoSendOnConnect, checked);
+                          await setConnectionAutoSend(
+                            editingConnection.id,
+                            autoSendOnConnect,
+                            checked
+                          );
                           // Refresh connections to update the store
                           const conns = await listConnections();
                           setConnections(conns);

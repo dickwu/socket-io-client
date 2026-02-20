@@ -41,6 +41,7 @@ body {
   flex-direction: column;
   background: #fafafa;
   height: 100%;
+  user-select: none;
   transition:
     width 0.2s ease,
     min-width 0.2s ease;
@@ -138,6 +139,7 @@ body {
   border-bottom: 1px solid #e5e7eb;
   background: #fafafa;
   gap: 12px;
+  user-select: none;
 }
 
 /* Event List */
@@ -164,6 +166,7 @@ body {
   align-items: center;
   gap: 8px;
   margin-bottom: 6px;
+  user-select: none;
 }
 
 .event-item-name {
@@ -230,6 +233,7 @@ body {
   gap: 4px;
   margin-top: 8px;
   opacity: 0;
+  user-select: none;
   transition: opacity 0.15s;
 }
 
@@ -308,6 +312,7 @@ html.dark .event-item-badge.size-badge {
   padding: 8px 16px;
   border-bottom: 1px solid #e5e7eb;
   background: #fff;
+  user-select: none;
 }
 
 .event-tag {
@@ -492,6 +497,7 @@ html.dark .event-item-badge.size-badge {
   background: #fafafa;
   font-size: 11px;
   color: #9ca3af;
+  user-select: none;
 }
 
 /* Dark Mode */
@@ -772,7 +778,10 @@ html.dark .collapsible-title {
   flex-direction: column;
   gap: 8px;
   min-height: 120px;
-  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s,
+    transform 0.15s;
 }
 
 .message-card:hover {

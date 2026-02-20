@@ -185,7 +185,8 @@ export const useSocketStore = create<SocketStore>((set) => ({
   setCurrentConnectionId: (id) =>
     set((state) => ({
       currentConnectionId: id,
-      connectionStatus: id === null ? 'disconnected' : (state.connectionStatuses[id] ?? 'disconnected'),
+      connectionStatus:
+        id === null ? 'disconnected' : (state.connectionStatuses[id] ?? 'disconnected'),
     })),
   setConnectionStatuses: (statuses) =>
     set((state) => ({
@@ -210,7 +211,8 @@ export const useSocketStore = create<SocketStore>((set) => ({
 
       return {
         connectionStatuses,
-        connectionStatus: state.currentConnectionId === id ? 'disconnected' : state.connectionStatus,
+        connectionStatus:
+          state.currentConnectionId === id ? 'disconnected' : state.connectionStatus,
       };
     }),
   setConnectionStatus: (status) =>

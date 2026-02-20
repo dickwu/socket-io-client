@@ -2,7 +2,14 @@
 
 import { useCallback } from 'react';
 import { Modal, Button, InputNumber, Typography, Space, Divider, App } from 'antd';
-import { PoweroffOutlined, CopyOutlined, CheckCircleOutlined, CloseCircleOutlined, ExportOutlined, PlayCircleOutlined } from '@ant-design/icons';
+import {
+  PoweroffOutlined,
+  CopyOutlined,
+  CheckCircleOutlined,
+  CloseCircleOutlined,
+  ExportOutlined,
+  PlayCircleOutlined,
+} from '@ant-design/icons';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { useMcpStore, useMcpStatusText, useMcpStatusColor } from '../stores/mcpStore';
 import { startMcpServer, stopMcpServer, checkClaudeCli, runClaudeMcpAdd } from '../hooks/useTauri';
@@ -116,7 +123,9 @@ export default function McpModal() {
       // First check if Claude CLI is installed
       const check = await checkClaudeCli();
       if (!check.installed) {
-        message.error('Claude CLI not found. Install it with: npm install -g @anthropic-ai/claude-code');
+        message.error(
+          'Claude CLI not found. Install it with: npm install -g @anthropic-ai/claude-code'
+        );
         return;
       }
 
@@ -138,7 +147,12 @@ export default function McpModal() {
           }
         }
         message.error(`Failed: ${errorMsg}`);
-        console.error('Claude CLI full output:', { stdout: result.stdout, stderr: result.stderr, path: check.path, version: check.version });
+        console.error('Claude CLI full output:', {
+          stdout: result.stdout,
+          stderr: result.stderr,
+          path: check.path,
+          version: check.version,
+        });
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
@@ -309,10 +323,7 @@ export default function McpModal() {
             >
               Run for Claude
             </Button>
-            <Button
-              icon={<CopyOutlined />}
-              onClick={handleCopyClaudeCommand}
-            >
+            <Button icon={<CopyOutlined />} onClick={handleCopyClaudeCommand}>
               Copy
             </Button>
           </Space.Compact>
