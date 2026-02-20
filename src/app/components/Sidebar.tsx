@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useCallback } from 'react';
 import { Button, Tooltip, App } from 'antd';
 import {
   PlusOutlined,
@@ -27,7 +27,7 @@ export default function Sidebar() {
 
   const { disconnect } = useSocket();
 
-  async function loadConnections() {
+  const loadConnections = useCallback(async () => {
     try {
       const conns = await listConnections();
       setConnections(conns);
@@ -35,12 +35,12 @@ export default function Sidebar() {
       // Tauri might not be available in browser
       console.log('Running outside Tauri');
     }
-  }
+  }, [setConnections]);
 
   // Load connections on mount
   useEffect(() => {
     loadConnections();
-  });
+  }, [loadConnections]);
 
   
 
