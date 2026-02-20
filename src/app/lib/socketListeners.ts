@@ -5,11 +5,13 @@ import { isTauri } from '@tauri-apps/api/core';
 import { useSocketStore, ConnectionStatus } from '@/app/stores/socketStore';
 
 interface SocketStatusPayload {
+  connectionId: number;
   status: ConnectionStatus;
   message?: string;
 }
 
 interface SocketEventPayload {
+  connectionId: number;
   eventName: string;
   payload: string;
   timestamp?: string;
@@ -17,6 +19,7 @@ interface SocketEventPayload {
 }
 
 interface SocketErrorPayload {
+  connectionId: number;
   message: string;
 }
 
@@ -31,22 +34,31 @@ export async function initSocketListeners(): Promise<void> {
 
   listenersInitialized = true;
 
-  const { setConnectionStatus, setErrorMessage, addReceivedEvent } = useSocketStore.getState();
+  const { setConnectionStatusForId } = useSocketStore.getState();
 
   try {
     // Listen for connection status changes
     await listen<SocketStatusPayload>('socket:status', ({ payload }) => {
-      setConnectionStatus(payload.status);
-      if (payload.status === 'error') {
-        setErrorMessage(payload.message ?? 'Unknown error');
-      } else {
-        setErrorMessage(null);
+      const store = useSocketStore.getState();
+      setConnectionStatusForId(payload.connectionId, payload.status);
+
+      if (store.currentConnectionId === payload.connectionId) {
+        if (payload.status === 'error') {
+          store.setErrorMessage(payload.message ?? 'Unknown error');
+        } else {
+          store.setErrorMessage(null);
+        }
       }
     });
 
     // Listen for socket events (both incoming and outgoing)
     await listen<SocketEventPayload>('socket:event', ({ payload }) => {
-      addReceivedEvent({
+      const store = useSocketStore.getState();
+      if (store.currentConnectionId !== payload.connectionId) {
+        return;
+      }
+
+      store.addReceivedEvent({
         id: crypto.randomUUID(),
         eventName: payload.eventName,
         payload: payload.payload ?? '',
@@ -57,8 +69,11 @@ export async function initSocketListeners(): Promise<void> {
 
     // Listen for socket errors
     await listen<SocketErrorPayload>('socket:error', ({ payload }) => {
-      setConnectionStatus('error');
-      setErrorMessage(payload.message ?? 'Unknown error');
+      const store = useSocketStore.getState();
+      setConnectionStatusForId(payload.connectionId, 'error');
+      if (store.currentConnectionId === payload.connectionId) {
+        store.setErrorMessage(payload.message ?? 'Unknown error');
+      }
     });
 
     console.log('Socket listeners initialized');

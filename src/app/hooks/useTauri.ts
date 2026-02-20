@@ -1,7 +1,14 @@
 'use client';
 
 import { invoke } from '@tauri-apps/api/core';
-import { Connection, ConnectionEvent, EmitLog, PinnedMessage, EventHistoryItem } from '@/app/stores/socketStore';
+import {
+  Connection,
+  ConnectionEvent,
+  ConnectionStatus,
+  EmitLog,
+  PinnedMessage,
+  EventHistoryItem,
+} from '@/app/stores/socketStore';
 
 // Convert snake_case to camelCase
 function toCamelCase<T>(obj: Record<string, unknown>): T {
@@ -217,20 +224,50 @@ export async function socketConnect(connectionId: number): Promise<void> {
   await invoke('socket_connect', { connectionId });
 }
 
-export async function socketDisconnect(): Promise<void> {
-  await invoke('socket_disconnect');
+export async function socketSetActive(connectionId: number): Promise<void> {
+  await invoke('socket_set_active', { connectionId });
 }
 
-export async function socketEmit(eventName: string, payload: string): Promise<void> {
-  await invoke('socket_emit', { eventName, payload });
+export async function socketClearActive(): Promise<void> {
+  await invoke('socket_clear_active');
 }
 
-export async function socketAddListener(eventName: string): Promise<void> {
-  await invoke('socket_add_listener', { eventName });
+export async function socketGetAllStatuses(): Promise<Record<number, ConnectionStatus>> {
+  const result = await invoke<Record<string, string>>('socket_get_all_statuses');
+  const statuses: Record<number, ConnectionStatus> = {};
+
+  for (const [id, status] of Object.entries(result)) {
+    if (
+      status === 'disconnected' ||
+      status === 'connecting' ||
+      status === 'connected' ||
+      status === 'error'
+    ) {
+      statuses[Number(id)] = status;
+    }
+  }
+
+  return statuses;
 }
 
-export async function socketRemoveListener(eventName: string): Promise<void> {
-  await invoke('socket_remove_listener', { eventName });
+export async function socketDisconnect(connectionId: number): Promise<void> {
+  await invoke('socket_disconnect', { connectionId });
+}
+
+export async function socketEmit(
+  connectionId: number,
+  eventName: string,
+  payload: string
+): Promise<void> {
+  await invoke('socket_emit', { connectionId, eventName, payload });
+}
+
+export async function socketAddListener(connectionId: number, eventName: string): Promise<void> {
+  await invoke('socket_add_listener', { connectionId, eventName });
+}
+
+export async function socketRemoveListener(connectionId: number, eventName: string): Promise<void> {
+  await invoke('socket_remove_listener', { connectionId, eventName });
 }
 
 export interface McpStatus {

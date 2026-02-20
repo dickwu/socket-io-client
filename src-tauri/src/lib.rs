@@ -191,6 +191,9 @@ pub fn run() {
             pinned::find_duplicate_pinned_message,
             // Socket commands
             socket_client::socket_connect,
+            socket_client::socket_set_active,
+            socket_client::socket_clear_active,
+            socket_client::socket_get_all_statuses,
             socket_client::socket_disconnect,
             socket_client::socket_emit,
             socket_client::socket_add_listener,

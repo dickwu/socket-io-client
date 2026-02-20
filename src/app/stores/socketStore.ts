@@ -59,6 +59,7 @@ interface SocketStore {
   // Connection state
   connections: Connection[];
   currentConnectionId: number | null;
+  connectionStatuses: Record<number, ConnectionStatus>;
   connectionStatus: ConnectionStatus;
   errorMessage: string | null;
 
@@ -95,6 +96,9 @@ interface SocketStore {
   // Actions - Connections
   setConnections: (connections: Connection[]) => void;
   setCurrentConnectionId: (id: number | null) => void;
+  setConnectionStatuses: (statuses: Record<number, ConnectionStatus>) => void;
+  setConnectionStatusForId: (id: number, status: ConnectionStatus) => void;
+  removeConnectionStatus: (id: number) => void;
   setConnectionStatus: (status: ConnectionStatus) => void;
   setErrorMessage: (message: string | null) => void;
 
@@ -128,6 +132,7 @@ export const useSocketStore = create<SocketStore>((set) => ({
   // Initial state
   connections: [],
   currentConnectionId: null,
+  connectionStatuses: {},
   connectionStatus: 'disconnected',
   errorMessage: null,
 
@@ -154,9 +159,74 @@ export const useSocketStore = create<SocketStore>((set) => ({
   sidebarCollapsed: false,
 
   // Actions - Connections
-  setConnections: (connections) => set({ connections }),
-  setCurrentConnectionId: (id) => set({ currentConnectionId: id }),
-  setConnectionStatus: (status) => set({ connectionStatus: status }),
+  setConnections: (connections) =>
+    set((state) => {
+      const knownConnectionIds = new Set(connections.map((connection) => connection.id));
+      const connectionStatuses: Record<number, ConnectionStatus> = {};
+
+      for (const [id, status] of Object.entries(state.connectionStatuses)) {
+        const numericId = Number(id);
+        if (knownConnectionIds.has(numericId)) {
+          connectionStatuses[numericId] = status;
+        }
+      }
+
+      const connectionStatus =
+        state.currentConnectionId === null
+          ? 'disconnected'
+          : (connectionStatuses[state.currentConnectionId] ?? 'disconnected');
+
+      return {
+        connections,
+        connectionStatuses,
+        connectionStatus,
+      };
+    }),
+  setCurrentConnectionId: (id) =>
+    set((state) => ({
+      currentConnectionId: id,
+      connectionStatus: id === null ? 'disconnected' : (state.connectionStatuses[id] ?? 'disconnected'),
+    })),
+  setConnectionStatuses: (statuses) =>
+    set((state) => ({
+      connectionStatuses: statuses,
+      connectionStatus:
+        state.currentConnectionId === null
+          ? 'disconnected'
+          : (statuses[state.currentConnectionId] ?? 'disconnected'),
+    })),
+  setConnectionStatusForId: (id, status) =>
+    set((state) => ({
+      connectionStatuses: {
+        ...state.connectionStatuses,
+        [id]: status,
+      },
+      connectionStatus: state.currentConnectionId === id ? status : state.connectionStatus,
+    })),
+  removeConnectionStatus: (id) =>
+    set((state) => {
+      const connectionStatuses = { ...state.connectionStatuses };
+      delete connectionStatuses[id];
+
+      return {
+        connectionStatuses,
+        connectionStatus: state.currentConnectionId === id ? 'disconnected' : state.connectionStatus,
+      };
+    }),
+  setConnectionStatus: (status) =>
+    set((state) => {
+      if (state.currentConnectionId === null) {
+        return { connectionStatus: status };
+      }
+
+      return {
+        connectionStatus: status,
+        connectionStatuses: {
+          ...state.connectionStatuses,
+          [state.currentConnectionId]: status,
+        },
+      };
+    }),
   setErrorMessage: (message) => set({ errorMessage: message }),
 
   // Actions - Events

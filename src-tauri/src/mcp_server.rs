@@ -120,7 +120,12 @@ fn get_tools() -> Vec<ToolInfo> {
             description: "Get current Socket.IO connection status".to_string(),
             input_schema: json!({
                 "type": "object",
-                "properties": {},
+                "properties": {
+                    "connection_id": {
+                        "type": "integer",
+                        "description": "Optional connection ID to query. If omitted, returns active + all statuses."
+                    }
+                },
                 "required": []
             }),
         },
@@ -140,10 +145,15 @@ fn get_tools() -> Vec<ToolInfo> {
         },
         ToolInfo {
             name: "disconnect".to_string(),
-            description: "Disconnect from the current Socket.IO server".to_string(),
+            description: "Disconnect from a Socket.IO connection".to_string(),
             input_schema: json!({
                 "type": "object",
-                "properties": {},
+                "properties": {
+                    "connection_id": {
+                        "type": "integer",
+                        "description": "Optional connection ID. Uses active connection when omitted."
+                    }
+                },
                 "required": []
             }),
         },
@@ -160,6 +170,10 @@ fn get_tools() -> Vec<ToolInfo> {
                     "payload": {
                         "type": "string",
                         "description": "The JSON payload to send"
+                    },
+                    "connection_id": {
+                        "type": "integer",
+                        "description": "Optional connection ID. Uses active connection when omitted."
                     }
                 },
                 "required": ["event_name", "payload"]
@@ -174,6 +188,10 @@ fn get_tools() -> Vec<ToolInfo> {
                     "limit": {
                         "type": "integer",
                         "description": "Maximum number of events to return (default: 50)"
+                    },
+                    "connection_id": {
+                        "type": "integer",
+                        "description": "Optional connection ID. Uses active connection when omitted."
                     }
                 },
                 "required": []
@@ -184,7 +202,12 @@ fn get_tools() -> Vec<ToolInfo> {
             description: "List all current event listeners".to_string(),
             input_schema: json!({
                 "type": "object",
-                "properties": {},
+                "properties": {
+                    "connection_id": {
+                        "type": "integer",
+                        "description": "Optional connection ID. Uses active connection when omitted."
+                    }
+                },
                 "required": []
             }),
         },
@@ -197,6 +220,10 @@ fn get_tools() -> Vec<ToolInfo> {
                     "event_name": {
                         "type": "string",
                         "description": "The event name to listen for"
+                    },
+                    "connection_id": {
+                        "type": "integer",
+                        "description": "Optional connection ID. Uses active connection when omitted."
                     }
                 },
                 "required": ["event_name"]
@@ -211,12 +238,23 @@ fn get_tools() -> Vec<ToolInfo> {
                     "event_name": {
                         "type": "string",
                         "description": "The event name to stop listening for"
+                    },
+                    "connection_id": {
+                        "type": "integer",
+                        "description": "Optional connection ID. Uses active connection when omitted."
                     }
                 },
                 "required": ["event_name"]
             }),
         },
     ]
+}
+
+fn resolve_connection_id(args: &Value, socket: &SocketManager) -> Result<i64, String> {
+    args.get("connection_id")
+        .and_then(|v| v.as_i64())
+        .or_else(|| socket.get_current_connection_id())
+        .ok_or_else(|| "connection_id is required when no active connection is selected".to_string())
 }
 
 // ============================================================================
@@ -241,10 +279,21 @@ async fn execute_tool(socket: &SocketManager, name: &str, args: &Value) -> Resul
             Ok(json!({ "connections": connections }))
         }
 
-        "get_connection_status" => Ok(json!({
-            "status": socket.get_status(),
-            "current_connection_id": socket.get_current_connection_id()
-        })),
+        "get_connection_status" => {
+            if let Some(connection_id) = args.get("connection_id").and_then(|v| v.as_i64()) {
+                Ok(json!({
+                    "connection_id": connection_id,
+                    "status": socket.get_status_for_connection(connection_id),
+                    "is_active": socket.get_current_connection_id() == Some(connection_id)
+                }))
+            } else {
+                Ok(json!({
+                    "status": socket.get_status(),
+                    "current_connection_id": socket.get_current_connection_id(),
+                    "statuses": socket.get_all_statuses()
+                }))
+            }
+        }
 
         "connect" => {
             let connection_id = args
@@ -252,7 +301,6 @@ async fn execute_tool(socket: &SocketManager, name: &str, args: &Value) -> Resul
                 .and_then(|v| v.as_i64())
                 .ok_or("connection_id is required")?;
 
-            socket.reset_connecting_flag();
             let socket_clone = socket.clone();
 
             let result = tokio::time::timeout(
@@ -265,19 +313,18 @@ async fn execute_tool(socket: &SocketManager, name: &str, args: &Value) -> Resul
 
             match result {
                 Ok(()) => Ok(json!({ "ok": true, "message": "Connection initiated" })),
-                Err(e) => {
-                    socket.reset_connecting_flag();
-                    Err(e)
-                }
+                Err(e) => Err(e),
             }
         }
 
         "disconnect" => {
-            socket.disconnect("mcp")?;
-            Ok(json!({ "ok": true, "message": "Disconnected" }))
+            let connection_id = resolve_connection_id(args, socket)?;
+            socket.disconnect(connection_id, "mcp")?;
+            Ok(json!({ "ok": true, "message": "Disconnected", "connection_id": connection_id }))
         }
 
         "send_message" => {
+            let connection_id = resolve_connection_id(args, socket)?;
             let event_name = args
                 .get("event_name")
                 .and_then(|v| v.as_str())
@@ -288,12 +335,10 @@ async fn execute_tool(socket: &SocketManager, name: &str, args: &Value) -> Resul
                 .ok_or("payload is required")?;
 
             socket
-                .emit_message_async(event_name.to_string(), payload.to_string())
+                .emit_message_async(connection_id, event_name.to_string(), payload.to_string())
                 .await?;
 
-            if let Some(connection_id) = socket.get_current_connection_id()
-                && let Err(e) = db::add_emit_log(connection_id, event_name, payload)
-            {
+            if let Err(e) = db::add_emit_log(connection_id, event_name, payload) {
                 log::warn!("Failed to save emit log: {}", e);
             }
 
@@ -301,9 +346,10 @@ async fn execute_tool(socket: &SocketManager, name: &str, args: &Value) -> Resul
         }
 
         "get_recent_events" => {
+            let connection_id = resolve_connection_id(args, socket)?;
             let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(50) as usize;
             let events: Vec<Value> = socket
-                .list_buffered_events(limit)
+                .list_buffered_events(connection_id, limit)
                 .into_iter()
                 .map(|e| {
                     json!({
@@ -314,24 +360,19 @@ async fn execute_tool(socket: &SocketManager, name: &str, args: &Value) -> Resul
                     })
                 })
                 .collect();
-            Ok(json!({ "events": events }))
+            Ok(json!({ "events": events, "connection_id": connection_id }))
         }
 
         "list_event_listeners" => {
-            let connection_id = socket.get_current_connection_id();
-            let in_memory = socket.list_listeners();
+            let connection_id = resolve_connection_id(args, socket)?;
+            let in_memory = socket.list_listeners(connection_id);
 
-            let persisted: std::collections::HashSet<String> = if let Some(conn_id) = connection_id
-            {
-                db::list_connection_events(conn_id)
-                    .map_err(|e| e.to_string())?
-                    .into_iter()
-                    .filter(|(_, _, is_listening)| *is_listening)
-                    .map(|(_, name, _)| name)
-                    .collect()
-            } else {
-                std::collections::HashSet::new()
-            };
+            let persisted: std::collections::HashSet<String> = db::list_connection_events(connection_id)
+                .map_err(|e| e.to_string())?
+                .into_iter()
+                .filter(|(_, _, is_listening)| *is_listening)
+                .map(|(_, name, _)| name)
+                .collect();
 
             let listeners: Vec<Value> = in_memory
                 .into_iter()
@@ -347,6 +388,7 @@ async fn execute_tool(socket: &SocketManager, name: &str, args: &Value) -> Resul
         }
 
         "add_event_listener" => {
+            let connection_id = resolve_connection_id(args, socket)?;
             let event_name = args
                 .get("event_name")
                 .and_then(|v| v.as_str())
@@ -357,57 +399,50 @@ async fn execute_tool(socket: &SocketManager, name: &str, args: &Value) -> Resul
                 return Err("Event name cannot be empty".to_string());
             }
 
-            socket.add_listener(event_name)?;
+            socket.add_listener(connection_id, event_name)?;
 
-            let mut persisted = false;
-            if let Some(connection_id) = socket.get_current_connection_id() {
-                let existing =
-                    db::list_connection_events(connection_id).map_err(|e| e.to_string())?;
-                let already_exists = existing.iter().any(|(_, name, _)| name == event_name);
+            let existing = db::list_connection_events(connection_id).map_err(|e| e.to_string())?;
+            let already_exists = existing.iter().any(|(_, name, _)| name == event_name);
 
-                if !already_exists {
-                    db::add_connection_event(connection_id, event_name)
-                        .map_err(|e| e.to_string())?;
-                    persisted = true;
-                } else if let Some((id, _, is_listening)) =
-                    existing.iter().find(|(_, name, _)| name == event_name)
-                {
-                    if !is_listening {
-                        db::toggle_connection_event(*id, true).map_err(|e| e.to_string())?;
-                    }
-                    persisted = true;
-                }
+            if !already_exists {
+                db::add_connection_event(connection_id, event_name).map_err(|e| e.to_string())?;
+            } else if let Some((id, _, is_listening)) =
+                existing.iter().find(|(_, name, _)| name == event_name)
+                && !*is_listening
+            {
+                db::toggle_connection_event(*id, true).map_err(|e| e.to_string())?;
             }
 
-            let message = if persisted {
-                "Listener added and persisted"
-            } else {
-                "Listener added (not persisted)"
-            };
-            Ok(json!({ "ok": true, "message": message }))
+            Ok(json!({
+                "ok": true,
+                "message": "Listener added and persisted",
+                "connection_id": connection_id
+            }))
         }
 
         "remove_event_listener" => {
+            let connection_id = resolve_connection_id(args, socket)?;
             let event_name = args
                 .get("event_name")
                 .and_then(|v| v.as_str())
                 .ok_or("event_name is required")?
                 .trim();
 
-            socket.remove_listener(event_name);
+            socket.remove_listener(connection_id, event_name);
 
-            if let Some(connection_id) = socket.get_current_connection_id() {
-                let existing =
-                    db::list_connection_events(connection_id).map_err(|e| e.to_string())?;
-                if let Some((id, _, is_listening)) =
-                    existing.iter().find(|(_, name, _)| name == event_name)
-                    && *is_listening
-                {
-                    db::toggle_connection_event(*id, false).map_err(|e| e.to_string())?;
-                }
+            let existing = db::list_connection_events(connection_id).map_err(|e| e.to_string())?;
+            if let Some((id, _, is_listening)) =
+                existing.iter().find(|(_, name, _)| name == event_name)
+                && *is_listening
+            {
+                db::toggle_connection_event(*id, false).map_err(|e| e.to_string())?;
             }
 
-            Ok(json!({ "ok": true, "message": "Listener removed" }))
+            Ok(json!({
+                "ok": true,
+                "message": "Listener removed",
+                "connection_id": connection_id
+            }))
         }
 
         _ => Err(format!("Unknown tool: {}", name)),

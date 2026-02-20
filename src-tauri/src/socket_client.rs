@@ -1,5 +1,5 @@
-use std::collections::{HashSet, VecDeque};
-use std::sync::{Arc, Mutex, RwLock};
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
@@ -17,20 +17,25 @@ const SOCKET_EVENT_EVENT: &str = "socket:event";
 const SOCKET_ERROR_EVENT: &str = "socket:error";
 
 #[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct SocketStatusPayload {
+    connection_id: i64,
     status: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     message: Option<String>,
 }
 
 #[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct SocketErrorPayload {
+    connection_id: i64,
     message: String,
 }
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SocketEventPayload {
+    connection_id: i64,
     event_name: String,
     payload: String,
     timestamp: String,
@@ -72,14 +77,29 @@ impl EventBuffer {
     }
 }
 
+struct ConnectionState {
+    client: Option<Client>,
+    listening_events: HashSet<String>,
+    status: String,
+    event_buffer: EventBuffer,
+}
+
+impl ConnectionState {
+    fn new(listening_events: HashSet<String>) -> Self {
+        Self {
+            client: None,
+            listening_events,
+            status: "disconnected".to_string(),
+            event_buffer: EventBuffer::new(100),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct SocketManager {
-    client: Arc<Mutex<Option<Client>>>,
-    listening_events: Arc<RwLock<HashSet<String>>>,
-    current_connection_id: Arc<Mutex<Option<i64>>>,
-    connecting: Arc<Mutex<bool>>,
-    connection_status: Arc<Mutex<String>>,
-    event_buffer: Arc<Mutex<EventBuffer>>,
+    connections: Arc<Mutex<HashMap<i64, ConnectionState>>>,
+    active_connection_id: Arc<Mutex<Option<i64>>>,
+    connecting: Arc<Mutex<HashSet<i64>>>,
     /// Tracks connections that have connected at least once (for reconnect detection)
     connected_once: Arc<Mutex<HashSet<i64>>>,
     app_handle: AppHandle,
@@ -88,12 +108,9 @@ pub struct SocketManager {
 impl SocketManager {
     pub fn new(app_handle: AppHandle) -> Self {
         Self {
-            client: Arc::new(Mutex::new(None)),
-            listening_events: Arc::new(RwLock::new(HashSet::new())),
-            current_connection_id: Arc::new(Mutex::new(None)),
-            connecting: Arc::new(Mutex::new(false)),
-            connection_status: Arc::new(Mutex::new("disconnected".to_string())),
-            event_buffer: Arc::new(Mutex::new(EventBuffer::new(100))),
+            connections: Arc::new(Mutex::new(HashMap::new())),
+            active_connection_id: Arc::new(Mutex::new(None)),
+            connecting: Arc::new(Mutex::new(HashSet::new())),
             connected_once: Arc::new(Mutex::new(HashSet::new())),
             app_handle,
         }
@@ -112,6 +129,89 @@ impl SocketManager {
         if let Ok(mut guard) = self.connected_once.lock() {
             guard.insert(connection_id);
         }
+    }
+
+    fn has_connection(&self, connection_id: i64) -> bool {
+        if let Ok(guard) = self.connections.lock() {
+            return guard.contains_key(&connection_id);
+        }
+        false
+    }
+
+    fn set_active_connection_internal(&self, connection_id: Option<i64>) {
+        if let Ok(mut guard) = self.active_connection_id.lock() {
+            *guard = connection_id;
+        }
+    }
+
+    pub fn set_active_connection(&self, connection_id: i64) {
+        self.set_active_connection_internal(Some(connection_id));
+    }
+
+    pub fn clear_active_connection(&self) {
+        self.set_active_connection_internal(None);
+    }
+
+    fn set_client(&self, connection_id: i64, client: Option<Client>) {
+        let old_client = if let Ok(mut guard) = self.connections.lock() {
+            let state = guard
+                .entry(connection_id)
+                .or_insert_with(|| ConnectionState::new(HashSet::new()));
+            let old_client = state.client.take();
+            state.client = client;
+            old_client
+        } else {
+            None
+        };
+
+        // Disconnect outside the connections mutex to avoid callback re-entrancy deadlocks.
+        if let Some(old_client) = old_client {
+            let _ = old_client.disconnect();
+        }
+    }
+
+    fn set_listening_events(&self, connection_id: i64, events: impl IntoIterator<Item = String>) {
+        if let Ok(mut guard) = self.connections.lock() {
+            let state = guard
+                .entry(connection_id)
+                .or_insert_with(|| ConnectionState::new(HashSet::new()));
+            state.listening_events.clear();
+            state.listening_events.extend(events);
+        }
+    }
+
+    fn set_status(&self, connection_id: i64, status: &str) {
+        if let Ok(mut guard) = self.connections.lock()
+            && let Some(state) = guard.get_mut(&connection_id)
+        {
+            state.status = status.to_string();
+        }
+    }
+
+    pub fn get_status_for_connection(&self, connection_id: i64) -> String {
+        if let Ok(guard) = self.connections.lock()
+            && let Some(state) = guard.get(&connection_id)
+        {
+            return state.status.clone();
+        }
+        "disconnected".to_string()
+    }
+
+    pub fn get_status(&self) -> String {
+        match self.get_current_connection_id() {
+            Some(connection_id) => self.get_status_for_connection(connection_id),
+            None => "disconnected".to_string(),
+        }
+    }
+
+    pub fn get_all_statuses(&self) -> HashMap<i64, String> {
+        if let Ok(guard) = self.connections.lock() {
+            return guard
+                .iter()
+                .map(|(id, state)| (*id, state.status.clone()))
+                .collect();
+        }
+        HashMap::new()
     }
 
     /// Perform auto-send for a connection
@@ -137,13 +237,13 @@ impl SocketManager {
             thread::sleep(Duration::from_millis(50));
 
             // Check if still connected
-            if self.get_status() != "connected" {
+            if self.get_status_for_connection(connection_id) != "connected" {
                 log::warn!("[AutoSend] Connection lost, stopping auto-send");
                 break;
             }
 
             log::info!("[AutoSend] Emitting: {}", event_name);
-            if let Err(e) = self.emit_message(&event_name, &payload) {
+            if let Err(e) = self.emit_message(connection_id, &event_name, &payload) {
                 log::error!("[AutoSend] Failed to emit {}: {}", event_name, e);
             } else {
                 // Log to emit_logs
@@ -157,28 +257,35 @@ impl SocketManager {
     pub fn connect(&self, connection_id: i64) -> Result<(), String> {
         {
             let mut connecting = self.connecting.lock().map_err(|_| "Lock error")?;
-            if *connecting {
-                return Err("Connection already in progress".to_string());
+            if connecting.contains(&connection_id) {
+                return Err("Connection already in progress for this connection".to_string());
             }
-            *connecting = true;
+            connecting.insert(connection_id);
         }
 
         let result = do_connect(connection_id, self);
 
         if let Ok(mut connecting) = self.connecting.lock() {
-            *connecting = false;
+            connecting.remove(&connection_id);
         }
 
         result
     }
 
-    pub fn disconnect(&self, reason: &str) -> Result<(), String> {
-        self.disconnect_inner(reason)
+    pub fn disconnect(&self, connection_id: i64, reason: &str) -> Result<(), String> {
+        self.disconnect_inner(connection_id, reason)
     }
 
-    pub fn emit_message(&self, event_name: &str, payload: &str) -> Result<(), String> {
-        let client = match self.client.lock() {
-            Ok(guard) => guard.clone(),
+    pub fn emit_message(
+        &self,
+        connection_id: i64,
+        event_name: &str,
+        payload: &str,
+    ) -> Result<(), String> {
+        let client = match self.connections.lock() {
+            Ok(guard) => guard
+                .get(&connection_id)
+                .and_then(|state| state.client.clone()),
             Err(_) => return Err("Failed to lock socket client".to_string()),
         };
 
@@ -193,17 +300,20 @@ impl SocketManager {
             .map_err(|e| e.to_string())?;
 
         // Use emit_outgoing_event to both record to DB AND notify frontend via Tauri event
-        self.emit_outgoing_event(event_name, payload.to_string());
+        self.emit_outgoing_event(connection_id, event_name, payload.to_string());
         Ok(())
     }
 
     pub async fn emit_message_async(
         &self,
+        connection_id: i64,
         event_name: String,
         payload: String,
     ) -> Result<(), String> {
-        let client = match self.client.lock() {
-            Ok(guard) => guard.clone(),
+        let client = match self.connections.lock() {
+            Ok(guard) => guard
+                .get(&connection_id)
+                .and_then(|state| state.client.clone()),
             Err(_) => return Err("Failed to lock socket client".to_string()),
         };
 
@@ -223,92 +333,74 @@ impl SocketManager {
         .map_err(|e| format!("Task join error: {}", e))??;
 
         // Record and emit to frontend so UI updates
-        self.emit_outgoing_event(&event_name, payload);
+        self.emit_outgoing_event(connection_id, &event_name, payload);
         Ok(())
     }
 
-    fn set_current_connection(&self, connection_id: Option<i64>) {
-        if let Ok(mut guard) = self.current_connection_id.lock() {
-            *guard = connection_id;
-        }
-    }
-
     pub fn get_current_connection_id(&self) -> Option<i64> {
-        if let Ok(guard) = self.current_connection_id.lock() {
+        if let Ok(guard) = self.active_connection_id.lock() {
             return *guard;
         }
         None
     }
 
-    fn set_client(&self, client: Option<Client>) {
-        if let Ok(mut guard) = self.client.lock() {
-            // Disconnect existing client before replacing
-            if let Some(old_client) = guard.take() {
-                let _ = old_client.disconnect();
-            }
-            *guard = client;
-        }
-    }
-
-    fn set_listening_events(&self, events: impl IntoIterator<Item = String>) {
-        if let Ok(mut guard) = self.listening_events.write() {
-            guard.clear();
-            guard.extend(events);
-        }
-    }
-
-    pub fn add_listener(&self, event_name: &str) -> Result<(), String> {
+    pub fn add_listener(&self, connection_id: i64, event_name: &str) -> Result<(), String> {
         let trimmed = event_name.trim();
         if trimmed.is_empty() {
             return Err("Event name cannot be empty".to_string());
         }
-        if let Ok(mut guard) = self.listening_events.write() {
-            guard.insert(trimmed.to_string());
+        if let Ok(mut guard) = self.connections.lock() {
+            let state = guard
+                .entry(connection_id)
+                .or_insert_with(|| ConnectionState::new(HashSet::new()));
+            state.listening_events.insert(trimmed.to_string());
         }
         Ok(())
     }
 
-    pub fn remove_listener(&self, event_name: &str) {
-        if let Ok(mut guard) = self.listening_events.write() {
-            guard.remove(event_name);
+    pub fn remove_listener(&self, connection_id: i64, event_name: &str) {
+        if let Ok(mut guard) = self.connections.lock()
+            && let Some(state) = guard.get_mut(&connection_id)
+        {
+            state.listening_events.remove(event_name);
         }
     }
 
-    pub fn list_listeners(&self) -> Vec<String> {
-        if let Ok(guard) = self.listening_events.read() {
-            return guard.iter().cloned().collect();
+    pub fn list_listeners(&self, connection_id: i64) -> Vec<String> {
+        if let Ok(guard) = self.connections.lock()
+            && let Some(state) = guard.get(&connection_id)
+        {
+            return state.listening_events.iter().cloned().collect();
         }
         Vec::new()
     }
 
-    fn should_forward_event(&self, event_name: &str) -> bool {
-        if let Ok(guard) = self.listening_events.read() {
-            return guard.contains(event_name);
+    fn should_forward_event(&self, connection_id: i64, event_name: &str) -> bool {
+        if let Ok(guard) = self.connections.lock()
+            && let Some(state) = guard.get(&connection_id)
+        {
+            return state.listening_events.contains(event_name);
         }
         false
     }
 
-    fn set_status(&self, status: &str) {
-        if let Ok(mut guard) = self.connection_status.lock() {
-            *guard = status.to_string();
-        }
-    }
-
-    pub fn get_status(&self) -> String {
-        if let Ok(guard) = self.connection_status.lock() {
-            return guard.clone();
-        }
-        "unknown".to_string()
-    }
-
-    pub fn list_buffered_events(&self, limit: usize) -> Vec<BufferedEvent> {
-        if let Ok(guard) = self.event_buffer.lock() {
-            return guard.list_recent(limit);
+    pub fn list_buffered_events(&self, connection_id: i64, limit: usize) -> Vec<BufferedEvent> {
+        if let Ok(guard) = self.connections.lock()
+            && let Some(state) = guard.get(&connection_id)
+        {
+            return state.event_buffer.list_recent(limit);
         }
         Vec::new()
     }
 
-    fn record_event(&self, event_name: &str, payload: String, direction: &str, timestamp: String) {
+    fn record_event(
+        &self,
+        connection_id: i64,
+        event_name: &str,
+        payload: String,
+        direction: &str,
+        timestamp: String,
+    ) {
         // Add to in-memory buffer
         let event = BufferedEvent {
             event_name: event_name.to_string(),
@@ -316,44 +408,49 @@ impl SocketManager {
             timestamp: timestamp.clone(),
             direction: direction.to_string(),
         };
-        if let Ok(mut guard) = self.event_buffer.lock() {
-            guard.push(event);
+        if let Ok(mut guard) = self.connections.lock()
+            && let Some(state) = guard.get_mut(&connection_id)
+        {
+            state.event_buffer.push(event);
         }
 
         // Persist to SQLite database
-        if let Some(connection_id) = self.get_current_connection_id() {
-            if let Err(e) = db::add_event_history(
-                connection_id,
-                event_name,
-                &payload,
-                &timestamp,
-                direction,
-            ) {
-                log::warn!("Failed to persist event to DB: {}", e);
-            }
+        if let Err(e) =
+            db::add_event_history(connection_id, event_name, &payload, &timestamp, direction)
+        {
+            log::warn!("Failed to persist event to DB: {}", e);
         }
     }
 
-    fn emit_status(&self, status: &str, message: Option<String>) {
-        self.set_status(status);
+    fn emit_status(&self, connection_id: i64, status: &str, message: Option<String>) {
+        self.set_status(connection_id, status);
         let payload = SocketStatusPayload {
+            connection_id,
             status: status.to_string(),
             message,
         };
         let _ = self.app_handle.emit(SOCKET_STATUS_EVENT, payload);
     }
 
-    fn emit_error(&self, message: impl Into<String>) {
+    fn emit_error(&self, connection_id: i64, message: impl Into<String>) {
         let payload = SocketErrorPayload {
+            connection_id,
             message: message.into(),
         };
         let _ = self.app_handle.emit(SOCKET_ERROR_EVENT, payload);
     }
 
-    fn emit_event(&self, event_name: &str, payload: String) {
+    fn emit_event(&self, connection_id: i64, event_name: &str, payload: String) {
         let timestamp = Utc::now().to_rfc3339();
-        self.record_event(event_name, payload.clone(), "in", timestamp.clone());
+        self.record_event(
+            connection_id,
+            event_name,
+            payload.clone(),
+            "in",
+            timestamp.clone(),
+        );
         let event_payload = SocketEventPayload {
+            connection_id,
             event_name: event_name.to_string(),
             payload,
             timestamp,
@@ -363,10 +460,17 @@ impl SocketManager {
     }
 
     /// Emit outgoing event to frontend (for MCP-sent messages to appear in UI)
-    fn emit_outgoing_event(&self, event_name: &str, payload: String) {
+    fn emit_outgoing_event(&self, connection_id: i64, event_name: &str, payload: String) {
         let timestamp = Utc::now().to_rfc3339();
-        self.record_event(event_name, payload.clone(), "out", timestamp.clone());
+        self.record_event(
+            connection_id,
+            event_name,
+            payload.clone(),
+            "out",
+            timestamp.clone(),
+        );
         let event_payload = SocketEventPayload {
+            connection_id,
             event_name: event_name.to_string(),
             payload,
             timestamp,
@@ -375,22 +479,42 @@ impl SocketManager {
         let _ = self.app_handle.emit(SOCKET_EVENT_EVENT, event_payload);
     }
 
-    fn disconnect_inner(&self, reason: &str) -> Result<(), String> {
+    fn disconnect_inner(&self, connection_id: i64, reason: &str) -> Result<(), String> {
         // Reset connecting flag to allow new connections
         if let Ok(mut connecting) = self.connecting.lock() {
-            *connecting = false;
+            connecting.remove(&connection_id);
         }
 
-        let client = match self.client.lock() {
-            Ok(mut guard) => guard.take(),
-            Err(_) => return Err("Failed to lock socket client".to_string()),
+        let client = match self.connections.lock() {
+            Ok(mut guard) => guard
+                .remove(&connection_id)
+                .and_then(|mut connection| connection.client.take()),
+            Err(_) => return Err("Failed to lock socket manager".to_string()),
         };
 
-        self.set_current_connection(None);
-        self.set_status("disconnected");
+        let status_payload = SocketStatusPayload {
+            connection_id,
+            status: "disconnected".to_string(),
+            message: None,
+        };
+        let _ = self.app_handle.emit(SOCKET_STATUS_EVENT, status_payload);
+
         if client.is_some() {
-            self.emit_status("disconnected", None);
-            self.emit_event("disconnect", json!({ "reason": reason }).to_string());
+            let timestamp = Utc::now().to_rfc3339();
+            let payload = json!({ "reason": reason }).to_string();
+            if let Err(e) =
+                db::add_event_history(connection_id, "disconnect", &payload, &timestamp, "in")
+            {
+                log::warn!("Failed to persist disconnect event to DB: {}", e);
+            }
+            let event_payload = SocketEventPayload {
+                connection_id,
+                event_name: "disconnect".to_string(),
+                payload,
+                timestamp,
+                direction: "in".to_string(),
+            };
+            let _ = self.app_handle.emit(SOCKET_EVENT_EVENT, event_payload);
         }
 
         if let Some(client) = client {
@@ -399,12 +523,6 @@ impl SocketManager {
         Ok(())
     }
 
-    /// Force reset the connecting flag (for recovery from stuck state)
-    pub fn reset_connecting_flag(&self) {
-        if let Ok(mut connecting) = self.connecting.lock() {
-            *connecting = false;
-        }
-    }
 }
 
 #[tauri::command]
@@ -416,9 +534,6 @@ pub fn socket_connect(
 }
 
 fn do_connect(connection_id: i64, state: &SocketManager) -> Result<(), String> {
-    // Disconnect existing connection first
-    state.disconnect_inner("reconnect")?;
-
     let connection = db::get_connection_by_id(connection_id)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "Connection not found".to_string())?;
@@ -431,7 +546,8 @@ fn do_connect(connection_id: i64, state: &SocketManager) -> Result<(), String> {
         .filter(|(_, _, is_listening)| *is_listening)
         .map(|(_, event_name, _)| event_name)
         .collect();
-    state.set_listening_events(listening);
+    state.set_listening_events(connection_id, listening.into_iter());
+    state.set_client(connection_id, None);
 
     let options_value: Value = serde_json::from_str(&options).unwrap_or(Value::Null);
     let mut builder = ClientBuilder::new(url).namespace(namespace);
@@ -455,7 +571,6 @@ fn do_connect(connection_id: i64, state: &SocketManager) -> Result<(), String> {
     }
 
     let status_state = state.clone();
-    let was_connected_before = state.has_connected_before(connection_id);
     let auto_send_on_connect = options_value
         .get("autoSendOnConnect")
         .and_then(|v| v.as_bool())
@@ -473,13 +588,18 @@ fn do_connect(connection_id: i64, state: &SocketManager) -> Result<(), String> {
         .unwrap_or((auto_send_on_connect, auto_send_on_reconnect));
 
     builder = builder.on(Event::Connect, move |_payload, _| {
-        status_state.emit_status("connected", None);
+        if !status_state.has_connection(connection_id) {
+            return;
+        }
+        status_state.emit_status(connection_id, "connected", None);
         status_state.emit_event(
+            connection_id,
             "connect",
             json!({ "connectionId": connection_id }).to_string(),
         );
 
         // Determine if we should auto-send
+        let was_connected_before = status_state.has_connected_before(connection_id);
         let should_auto_send = if was_connected_before {
             db_auto_reconnect
         } else {
@@ -507,79 +627,125 @@ fn do_connect(connection_id: i64, state: &SocketManager) -> Result<(), String> {
 
     let disconnect_state = state.clone();
     builder = builder.on(Event::Close, move |_payload, _| {
-        disconnect_state.emit_status("disconnected", None);
-        disconnect_state.emit_event("disconnect", json!({ "reason": "server" }).to_string());
+        if !disconnect_state.has_connection(connection_id) {
+            return;
+        }
+        disconnect_state.emit_status(connection_id, "disconnected", None);
+        disconnect_state.emit_event(
+            connection_id,
+            "disconnect",
+            json!({ "reason": "server" }).to_string(),
+        );
     });
 
     let error_state = state.clone();
     builder = builder.on(Event::Error, move |payload, _| {
+        if !error_state.has_connection(connection_id) {
+            return;
+        }
         let message = payload_to_string(&payload);
-        error_state.emit_status("error", Some(message.clone()));
-        error_state.emit_event("connect_error", json!({ "message": message }).to_string());
-        error_state.emit_error(message);
+        error_state.emit_status(connection_id, "error", Some(message.clone()));
+        error_state.emit_event(
+            connection_id,
+            "connect_error",
+            json!({ "message": message }).to_string(),
+        );
+        error_state.emit_error(connection_id, message);
     });
 
     let any_state = state.clone();
     builder = builder.on_any(move |event, payload, _| {
+        if !any_state.has_connection(connection_id) {
+            return;
+        }
         let event_name = event.to_string();
-        if !any_state.should_forward_event(&event_name) {
+        if !any_state.should_forward_event(connection_id, &event_name) {
             return;
         }
         let payload = payload_to_string(&payload);
-        any_state.emit_event(&event_name, payload);
+        any_state.emit_event(connection_id, &event_name, payload);
     });
 
     // Emit connecting status before attempting connection
-    state.emit_status("connecting", None);
+    state.emit_status(connection_id, "connecting", None);
 
     match builder.connect() {
         Ok(client) => {
-            state.set_client(Some(client));
-            state.set_current_connection(Some(connection_id));
+            state.set_client(connection_id, Some(client));
+            state.set_active_connection(connection_id);
             // The Event::Connect callback will emit "connected" when actually connected
             Ok(())
         }
         Err(err) => {
             let message = err.to_string();
-            state.emit_status("error", Some(message.clone()));
+            state.emit_status(connection_id, "error", Some(message.clone()));
             state.emit_event(
+                connection_id,
                 "connect_error",
                 json!({ "message": message.clone() }).to_string(),
             );
-            state.emit_error(message.clone());
+            state.emit_error(connection_id, message.clone());
             Err(message)
         }
     }
 }
 
 #[tauri::command]
-pub fn socket_disconnect(state: tauri::State<'_, SocketManager>) -> Result<(), String> {
-    state.disconnect("manual")
+pub fn socket_set_active(
+    connection_id: i64,
+    state: tauri::State<'_, SocketManager>,
+) -> Result<(), String> {
+    state.set_active_connection(connection_id);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn socket_clear_active(state: tauri::State<'_, SocketManager>) -> Result<(), String> {
+    state.clear_active_connection();
+    Ok(())
+}
+
+#[tauri::command]
+pub fn socket_get_all_statuses(
+    state: tauri::State<'_, SocketManager>,
+) -> Result<HashMap<i64, String>, String> {
+    Ok(state.get_all_statuses())
+}
+
+#[tauri::command]
+pub fn socket_disconnect(
+    connection_id: i64,
+    state: tauri::State<'_, SocketManager>,
+) -> Result<(), String> {
+    state.disconnect(connection_id, "manual")
 }
 
 #[tauri::command]
 pub fn socket_emit(
+    connection_id: i64,
     event_name: String,
     payload: String,
     state: tauri::State<'_, SocketManager>,
 ) -> Result<(), String> {
-    state.emit_message(&event_name, &payload)
+    state.emit_message(connection_id, &event_name, &payload)
 }
 
 #[tauri::command]
 pub fn socket_add_listener(
+    connection_id: i64,
     event_name: String,
     state: tauri::State<'_, SocketManager>,
 ) -> Result<(), String> {
-    state.add_listener(&event_name)
+    state.add_listener(connection_id, &event_name)
 }
 
 #[tauri::command]
 pub fn socket_remove_listener(
+    connection_id: i64,
     event_name: String,
     state: tauri::State<'_, SocketManager>,
 ) -> Result<(), String> {
-    state.remove_listener(&event_name);
+    state.remove_listener(connection_id, &event_name);
     Ok(())
 }
 

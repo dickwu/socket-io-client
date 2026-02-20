@@ -25,6 +25,9 @@ import {
   listPinnedMessages,
   listEventHistory,
   getMcpStatus,
+  socketSetActive,
+  socketClearActive,
+  socketGetAllStatuses,
 } from './hooks/useTauri';
 import useSocket from './hooks/useSocket';
 import Sidebar from './components/Sidebar';
@@ -49,6 +52,7 @@ export default function Home() {
   const connectionStatus = useSocketStore((state) => state.connectionStatus);
   const setConnections = useSocketStore((state) => state.setConnections);
   const setCurrentConnectionId = useSocketStore((state) => state.setCurrentConnectionId);
+  const setConnectionStatuses = useSocketStore((state) => state.setConnectionStatuses);
   const setConnectionEvents = useSocketStore((state) => state.setConnectionEvents);
   const setEmitLogs = useSocketStore((state) => state.setEmitLogs);
   const setPinnedMessages = useSocketStore((state) => state.setPinnedMessages);
@@ -79,6 +83,8 @@ export default function Home() {
     try {
       const conns = await listConnections();
       setConnections(conns);
+      const statuses = await socketGetAllStatuses();
+      setConnectionStatuses(statuses);
       const currentId = await getCurrentConnection();
       if (currentId && conns.find((c) => c.id === currentId)) {
         setCurrentConnectionId(currentId);
@@ -86,7 +92,7 @@ export default function Home() {
     } catch {
       console.log('Running in browser mode');
     }
-  }, [setConnections, setCurrentConnectionId]);
+  }, [setConnectionStatuses, setConnections, setCurrentConnectionId]);
 
   const loadVersion = useCallback(async () => {
     try {
@@ -145,6 +151,9 @@ export default function Home() {
           listPinnedMessages(connectionId),
           listEventHistory(connectionId, 1000),
         ]);
+        if (useSocketStore.getState().currentConnectionId !== connectionId) {
+          return;
+        }
         setConnectionEvents(events);
         setEmitLogs(logs);
         setPinnedMessages(pinned);
@@ -172,9 +181,27 @@ export default function Home() {
 
   useEffect(() => {
     if (currentConnection) {
+      setConnectionEvents([]);
+      setEmitLogs([]);
+      setPinnedMessages([]);
+      setReceivedEvents([]);
       loadConnectionData(currentConnection.id);
+      void socketSetActive(currentConnection.id).catch(() => {});
+      return;
     }
-  }, [currentConnection, loadConnectionData]);
+    setConnectionEvents([]);
+    setEmitLogs([]);
+    setPinnedMessages([]);
+    setReceivedEvents([]);
+    void socketClearActive().catch(() => {});
+  }, [
+    currentConnection,
+    loadConnectionData,
+    setConnectionEvents,
+    setEmitLogs,
+    setPinnedMessages,
+    setReceivedEvents,
+  ]);
 
   function handleConnect() {
     if (connectionStatus === 'connected') {
